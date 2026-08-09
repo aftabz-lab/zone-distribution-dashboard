@@ -195,6 +195,10 @@ function detailFilteredRows(){
     return state.filtered.filter(row=>String(row[f.key] ?? "").trim()==="");
   }
 
+  if(f.mode==="zonal-only"){
+    return zonalRowsExcludingRhoNames(state.filtered);
+  }
+
   const wanted=String(f.value ?? "").trim();
   return state.filtered.filter(row=>String(row[f.key] ?? "").trim()===wanted);
 }
@@ -225,6 +229,26 @@ function scrollToDetailView(){
   if(target) target.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
+function personnelNameKey(value){
+  return String(value ?? "").trim().replace(/\s+/g," ").toLowerCase();
+}
+
+function rhoNameSet(rows){
+  return new Set(
+    rows
+      .map(row=>personnelNameKey(row["Regional Head HR Name"]))
+      .filter(Boolean)
+  );
+}
+
+function zonalRowsExcludingRhoNames(rows){
+  const rhoNames=rhoNameSet(rows);
+  return rows.filter(row=>{
+    const zonalName=personnelNameKey(row["Zonal HR Name"]);
+    return zonalName && !rhoNames.has(zonalName);
+  });
+}
+
 function formatMobile(value){
   const text=String(value ?? "").trim();
   if(!text) return "";
@@ -240,12 +264,17 @@ function uniquePersonnel(rows,mode){
   const idKey=isRho ? "Regional Head ID" : "Zonal ID";
   const contactKey=isRho ? "Regional Head Contact" : "Zonal Contact";
   const map=new Map();
+  const rhoNames=isRho ? new Set() : rhoNameSet(rows);
 
   rows.forEach(row=>{
     const name=String(row[nameKey] ?? "").trim();
     const id=String(row[idKey] ?? "").trim();
     const mobile=formatMobile(row[contactKey]);
     if(!name && !id && !mobile) return;
+
+    // If the same person's name appears in RHO and Zonal data,
+    // show that person only in the RHO section.
+    if(!isRho && rhoNames.has(personnelNameKey(name))) return;
     const key=`${name}|${id}|${mobile}`;
     if(!map.has(key)) map.set(key,{name,id,mobile});
   });
@@ -360,7 +389,7 @@ function renderKpis(){
   const own=countValue(r,"Status","OWN");
   const fr=countValue(r,"Status","FR");
   const rhoQty=countDistinct(r,"Regional Head HR Name");
-  const zonalQty=countDistinct(r,"Zonal HR Name");
+  const zonalQty=uniquePersonnel(r,"zonal").length;
   const districts=countDistinct(r,"District");
 
   const defs=[
@@ -382,8 +411,8 @@ function renderKpis(){
       drill:{key:"Regional Head HR Name",value:"",label:"RHO Qty",mode:"nonblank",
         description:`Outlets under ${numberFmt.format(rhoQty)} RHO(s)`,personnel:"rho"}},
     {label:"Zonal Qty",value:numberFmt.format(zonalQty),note:"zonals in current view",cls:"",
-      drill:{key:"Zonal HR Name",value:"",label:"Zonal Qty",mode:"nonblank",
-        description:`Outlets under ${numberFmt.format(zonalQty)} Zonal(s)`,personnel:"zonal"}},
+      drill:{key:"Zonal HR Name",value:"",label:"Zonal Qty",mode:"zonal-only",
+        description:`Outlets under ${numberFmt.format(zonalQty)} Zonal(s) excluding names already listed as RHO`,personnel:"zonal"}},
     {label:"Districts",value:numberFmt.format(districts),note:"represented in current view",cls:"",
       drill:{key:"",value:"",label:"Districts",mode:"all",description:`Outlets across ${numberFmt.format(districts)} district(s)`}},
   ];
