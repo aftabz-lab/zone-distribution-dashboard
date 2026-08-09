@@ -49,6 +49,7 @@ const state = {
   pageSize:100,
   visibleColumns:new Set(COLUMNS.map(c=>c[0])),
   detailFilter:null,
+  personnelMode:null,
 };
 
 const $ = id => document.getElementById(id);
@@ -176,25 +177,31 @@ function applyFilters(syncFacets=true){
 
 function clearDetailFilter(render=true){
   state.detailFilter=null;
+  state.personnelMode=null;
   state.page=1;
+  renderPersonnelDirectories();
   if(render) renderTable();
 }
 
 function detailFilteredRows(){
   if(!state.detailFilter) return state.filtered;
-
   const f=state.detailFilter;
+
+  if(f.mode==="all") return state.filtered;
   if(f.mode==="nonblank"){
     return state.filtered.filter(row=>String(row[f.key] ?? "").trim()!=="");
   }
-  return state.filtered.filter(row=>String(row[f.key] ?? "")===String(f.value ?? ""));
+  if(f.mode==="blank"){
+    return state.filtered.filter(row=>String(row[f.key] ?? "").trim()==="");
+  }
+
+  const wanted=String(f.value ?? "").trim();
+  return state.filtered.filter(row=>String(row[f.key] ?? "").trim()===wanted);
 }
 
 function renderDetailFilterChip(){
-  const chip=$("detail-filter-chip");
-  const text=$("detail-filter-text");
+  const chip=$("detail-filter-chip"), text=$("detail-filter-text");
   if(!chip || !text) return;
-
   if(!state.detailFilter){
     chip.classList.add("hidden");
     text.textContent="";
@@ -202,25 +209,84 @@ function renderDetailFilterChip(){
   }
 
   const f=state.detailFilter;
-  text.textContent=f.description || (
-    f.mode==="nonblank"
-      ? `${f.label || f.key}: mapped outlets`
-      : `${f.label || f.key}: ${f.value}`
+  const actual=detailFilteredRows().length;
+  const base=f.description || (
+    f.mode==="all" ? (f.label || "Current view") :
+    f.mode==="nonblank" ? `${f.label || f.key}: mapped outlets` :
+    f.mode==="blank" ? `${f.label || f.key}: blank` :
+    `${f.label || f.key}: ${f.value}`
   );
+  text.textContent=`${base} · ${numberFmt.format(actual)} outlet(s)`;
   chip.classList.remove("hidden");
 }
 
 function scrollToDetailView(){
   const target=$("detail-view");
-  if(target){
-    target.scrollIntoView({behavior:"smooth",block:"start"});
+  if(target) target.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function formatMobile(value){
+  const text=String(value ?? "").trim();
+  if(!text) return "";
+  const digits=text.replace(/\D/g,"");
+  if(digits.length===10 && digits.startsWith("1")) return `0${digits}`;
+  if(digits.length===13 && digits.startsWith("880")) return `+${digits}`;
+  return text;
+}
+
+function uniquePersonnel(rows,mode){
+  const isRho=mode==="rho";
+  const nameKey=isRho ? "Regional Head HR Name" : "Zonal HR Name";
+  const idKey=isRho ? "Regional Head ID" : "Zonal ID";
+  const contactKey=isRho ? "Regional Head Contact" : "Zonal Contact";
+  const map=new Map();
+
+  rows.forEach(row=>{
+    const name=String(row[nameKey] ?? "").trim();
+    const id=String(row[idKey] ?? "").trim();
+    const mobile=formatMobile(row[contactKey]);
+    if(!name && !id && !mobile) return;
+    const key=`${name}|${id}|${mobile}`;
+    if(!map.has(key)) map.set(key,{name,id,mobile});
+  });
+
+  return [...map.values()].sort((a,b)=>
+    a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"}) ||
+    a.id.localeCompare(b.id,undefined,{numeric:true,sensitivity:"base"})
+  );
+}
+
+function renderPersonnelDirectories(){
+  const rhoCard=$("rho-directory"), zonalCard=$("zonal-directory");
+  if(!rhoCard || !zonalCard) return;
+  rhoCard.classList.add("hidden");
+  zonalCard.classList.add("hidden");
+
+  if(state.personnelMode==="rho"){
+    const people=uniquePersonnel(state.filtered,"rho");
+    $("rho-directory-summary").textContent=`${numberFmt.format(people.length)} Regional Head(s) represented in the current filtered view.`;
+    $("rho-directory-body").innerHTML=people.length
+      ? people.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.id)}</td><td>${esc(p.mobile)}</td></tr>`).join("")
+      : `<tr><td colspan="3"><div class="empty-state">No Regional Head records found.</div></td></tr>`;
+    rhoCard.classList.remove("hidden");
+  }
+
+  if(state.personnelMode==="zonal"){
+    const people=uniquePersonnel(state.filtered,"zonal");
+    $("zonal-directory-summary").textContent=`${numberFmt.format(people.length)} Zonal(s) represented in the current filtered view.`;
+    $("zonal-directory-body").innerHTML=people.length
+      ? people.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.id)}</td><td>${esc(p.mobile)}</td></tr>`).join("")
+      : `<tr><td colspan="3"><div class="empty-state">No Zonal records found.</div></td></tr>`;
+    zonalCard.classList.remove("hidden");
   }
 }
 
-function setDetailFilter(key,value,label,description="",mode="value"){
+function setDetailFilter(key,value,label,description="",mode="value",personnel=""){
   state.detailFilter={key,value,label,description,mode};
+  state.personnelMode=personnel || null;
   state.page=1;
   renderTable();
+  renderPersonnelDirectories();
   scrollToDetailView();
 }
 
@@ -228,15 +294,17 @@ function attachDrilldownHandlers(target){
   target.querySelectorAll("[data-drill-key]").forEach(btn=>{
     btn.addEventListener("click",()=>{
       setDetailFilter(
-        btn.dataset.drillKey,
+        btn.dataset.drillKey || "",
         btn.dataset.drillValue || "",
-        btn.dataset.drillLabel || btn.dataset.drillKey,
+        btn.dataset.drillLabel || btn.dataset.drillKey || "Current view",
         btn.dataset.drillDescription || "",
-        btn.dataset.drillMode || "value"
+        btn.dataset.drillMode || "value",
+        btn.dataset.personnel || ""
       );
     });
   });
 }
+
 
 function compareValues(a,b,type){
   if(type==="number"){
@@ -279,66 +347,55 @@ function renderKpis(){
   const r=state.filtered;
   const totalSft=sum(r,"SFT");
   const avgSft=r.length?totalSft/r.length:0;
+  const pnp=countValue(r,"PNP Non PNP status","PNP");
+  const nonPnp=countValue(r,"PNP Non PNP status","Non-PNP");
+  const own=countValue(r,"Status","OWN");
+  const fr=countValue(r,"Status","FR");
   const rhoQty=countDistinct(r,"Regional Head HR Name");
   const zonalQty=countDistinct(r,"Zonal HR Name");
+  const districts=countDistinct(r,"District");
 
   const defs=[
-    {label:"Visible Outlets",value:numberFmt.format(r.length),note:`${numberFmt.format(state.rows.length)} total source rows`,cls:"accent"},
-    {label:"Total SFT",value:numberFmt.format(Math.round(totalSft)),note:"filtered network area",cls:""},
-    {label:"Average SFT",value:numberFmt.format(Math.round(avgSft)),note:"per visible outlet",cls:""},
-    {label:"PNP",value:numberFmt.format(countValue(r,"PNP Non PNP status","PNP")),note:"visible outlets",cls:"accent"},
-    {label:"Non-PNP",value:numberFmt.format(countValue(r,"PNP Non PNP status","Non-PNP")),note:"visible outlets",cls:""},
-    {label:"OWN",value:numberFmt.format(countValue(r,"Status","OWN")),note:"visible outlets",cls:"accent"},
-    {label:"FR",value:numberFmt.format(countValue(r,"Status","FR")),note:"visible outlets",cls:""},
-    {
-      label:"RHO Qty",
-      value:numberFmt.format(rhoQty),
-      note:"regional heads in current view",
-      cls:"accent",
-      drill:{
-        key:"Regional Head HR Name",
-        value:"",
-        label:"RHO Qty",
-        mode:"nonblank",
-        description:`RHO-mapped outlets in current view (${numberFmt.format(rhoQty)} RHO)`
-      }
-    },
-    {
-      label:"Zonal Qty",
-      value:numberFmt.format(zonalQty),
-      note:"zonals in current view",
-      cls:"",
-      drill:{
-        key:"Zonal HR Name",
-        value:"",
-        label:"Zonal Qty",
-        mode:"nonblank",
-        description:`Zonal-mapped outlets in current view (${numberFmt.format(zonalQty)} Zonal)`
-      }
-    },
-    {label:"Districts",value:numberFmt.format(countDistinct(r,"District")),note:"represented in current view",cls:""},
+    {label:"Visible Outlets",value:numberFmt.format(r.length),note:`${numberFmt.format(state.rows.length)} total source rows`,cls:"accent",
+      drill:{key:"",value:"",label:"Visible Outlets",mode:"all",description:"Visible outlets in current filtered view"}},
+    {label:"Total SFT",value:numberFmt.format(Math.round(totalSft)),note:"filtered network area",cls:"",
+      drill:{key:"",value:"",label:"Total SFT",mode:"all",description:"Outlets contributing to Total SFT"}},
+    {label:"Average SFT",value:numberFmt.format(Math.round(avgSft)),note:"per visible outlet",cls:"",
+      drill:{key:"",value:"",label:"Average SFT",mode:"all",description:"Outlets contributing to Average SFT"}},
+    {label:"PNP",value:numberFmt.format(pnp),note:"visible outlets",cls:"accent",
+      drill:{key:"PNP Non PNP status",value:"PNP",label:"PNP",mode:"value",description:"PNP outlets"}},
+    {label:"Non-PNP",value:numberFmt.format(nonPnp),note:"visible outlets",cls:"",
+      drill:{key:"PNP Non PNP status",value:"Non-PNP",label:"Non-PNP",mode:"value",description:"Non-PNP outlets"}},
+    {label:"OWN",value:numberFmt.format(own),note:"visible outlets",cls:"accent",
+      drill:{key:"Status",value:"OWN",label:"OWN",mode:"value",description:"OWN outlets"}},
+    {label:"FR",value:numberFmt.format(fr),note:"visible outlets",cls:"",
+      drill:{key:"Status",value:"FR",label:"FR",mode:"value",description:"FR outlets"}},
+    {label:"RHO Qty",value:numberFmt.format(rhoQty),note:"regional heads in current view",cls:"accent",
+      drill:{key:"Regional Head HR Name",value:"",label:"RHO Qty",mode:"nonblank",
+        description:`Outlets under ${numberFmt.format(rhoQty)} RHO(s)`,personnel:"rho"}},
+    {label:"Zonal Qty",value:numberFmt.format(zonalQty),note:"zonals in current view",cls:"",
+      drill:{key:"Zonal HR Name",value:"",label:"Zonal Qty",mode:"nonblank",
+        description:`Outlets under ${numberFmt.format(zonalQty)} Zonal(s)`,personnel:"zonal"}},
+    {label:"Districts",value:numberFmt.format(districts),note:"represented in current view",cls:"",
+      drill:{key:"",value:"",label:"Districts",mode:"all",description:`Outlets across ${numberFmt.format(districts)} district(s)`}},
   ];
 
-  $("kpi-grid").innerHTML=defs.map(d=>{
-    const valueHtml=d.drill
-      ? `<button type="button" class="kpi-value kpi-drill-value"
-          data-drill-key="${esc(d.drill.key)}"
-          data-drill-value="${esc(d.drill.value)}"
-          data-drill-label="${esc(d.drill.label)}"
-          data-drill-mode="${esc(d.drill.mode)}"
-          data-drill-description="${esc(d.drill.description)}"
-          title="Show related outlets in Detail View">${esc(d.value)}</button>`
-      : `<div class="kpi-value">${esc(d.value)}</div>`;
-
-    return `<article class="kpi ${d.cls}">
-      <div class="kpi-label">${esc(d.label)}</div>
-      ${valueHtml}
-      <div class="kpi-note">${esc(d.note)}</div>
-    </article>`;
-  }).join("");
+  $("kpi-grid").innerHTML=defs.map(d=>`<article class="kpi ${d.cls}">
+    <div class="kpi-label">${esc(d.label)}</div>
+    <button type="button" class="kpi-value kpi-drill-value"
+      data-drill-key="${esc(d.drill.key)}"
+      data-drill-value="${esc(d.drill.value)}"
+      data-drill-label="${esc(d.drill.label)}"
+      data-drill-mode="${esc(d.drill.mode)}"
+      data-drill-description="${esc(d.drill.description)}"
+      ${d.drill.personnel?`data-personnel="${esc(d.drill.personnel)}"`:""}
+      title="Show related details">${esc(d.value)}</button>
+    <div class="kpi-note">${esc(d.note)}</div>
+  </article>`).join("");
 
   attachDrilldownHandlers($("kpi-grid"));
 }
+
 
 function frequencies(rows,key){
   const map=new Map();
@@ -360,19 +417,20 @@ function renderDonut(targetId,key){
     angle+=pct;
   });
 
-  const legend=entries.slice(0,8).map(([label,value],i)=>
-    `<div class="legend-row">
+  const legend=entries.slice(0,8).map(([label,value],i)=>{
+    const isBlank=label==="(blank)";
+    return `<div class="legend-row">
       <span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>
       <span class="legend-label" title="${esc(label)}">${esc(label)}</span>
-      <button type="button"
-        class="legend-value drill-count-btn"
+      <button type="button" class="legend-value drill-count-btn"
         data-drill-key="${esc(key)}"
-        data-drill-value="${esc(label)}"
+        data-drill-value="${esc(isBlank?"":label)}"
         data-drill-label="${esc(key)}"
+        data-drill-mode="${isBlank?"blank":"value"}"
         data-drill-description="${esc(`${key}: ${label}`)}"
-        title="Show these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
-    </div>`
-  ).join("");
+        title="Show exactly these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
+    </div>`;
+  }).join("");
 
   target.innerHTML=`<div class="donut-wrap">
     <div class="donut" style="background:conic-gradient(${stops.join(",")})">
@@ -380,7 +438,6 @@ function renderDonut(targetId,key){
     </div>
     <div class="legend">${legend}</div>
   </div>`;
-
   attachDrilldownHandlers(target);
 }
 
@@ -389,20 +446,20 @@ function renderBars(targetId,key,limit=7){
   if(!entries.length){ target.innerHTML=`<div class="empty-state">No matching rows</div>`; return; }
 
   const max=entries[0][1] || 1;
-  target.innerHTML=`<div class="bars">${entries.map(([label,value])=>
-    `<div class="bar-row">
+  target.innerHTML=`<div class="bars">${entries.map(([label,value])=>{
+    const isBlank=label==="(blank)";
+    return `<div class="bar-row">
       <div class="bar-label" title="${esc(label)}">${esc(label)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,value/max*100)}%"></div></div>
-      <button type="button"
-        class="bar-value drill-count-btn"
+      <button type="button" class="bar-value drill-count-btn"
         data-drill-key="${esc(key)}"
-        data-drill-value="${esc(label)}"
+        data-drill-value="${esc(isBlank?"":label)}"
         data-drill-label="${esc(key)}"
+        data-drill-mode="${isBlank?"blank":"value"}"
         data-drill-description="${esc(`${key}: ${label}`)}"
-        title="Show these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
-    </div>`
-  ).join("")}</div>`;
-
+        title="Show exactly these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
+    </div>`;
+  }).join("")}</div>`;
   attachDrilldownHandlers(target);
 }
 
@@ -460,7 +517,7 @@ function renderTable(){
   const rows=pageRows();
   $("table-body").innerHTML=rows.length
     ? rows.map(row=>`<tr>${columns.map(col=>renderCell(row,col)).join("")}</tr>`).join("")
-    : `<tr><td colspan="${Math.max(1,columns.length)}"><div class="empty-state">No rows match the current filters.</div></td></tr>`;
+    : `<tr><td colspan="${Math.max(1,columns.length)}"><div class="empty-state">No outlet rows match the selected detail link.</div></td></tr>`;
 
   const detailRows=detailFilteredRows();
   const total=detailRows.length;
@@ -569,6 +626,14 @@ async function init(){
     initPagination();
     initColumnChooser();
     $("clear-detail-filter").addEventListener("click",()=>clearDetailFilter(true));
+    $("close-rho-directory").addEventListener("click",()=>{
+      state.personnelMode=null;
+      renderPersonnelDirectories();
+    });
+    $("close-zonal-directory").addEventListener("click",()=>{
+      state.personnelMode=null;
+      renderPersonnelDirectories();
+    });
     $("download-csv").addEventListener("click",downloadCsv);
     applyFilters();
   }catch(err){

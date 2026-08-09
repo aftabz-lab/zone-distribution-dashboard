@@ -609,3 +609,33 @@ select option:checked{
     grid-template-columns:repeat(2,minmax(0,1fr)) !important;
   }
 }
+
+
+/* v11 — exact clicked-number drill-down + personnel windows */
+.kpi-drill-value{color:#8de0ff !important}
+.kpi-drill-value:hover,.kpi-drill-value:focus-visible{color:#ffffff !important}
+
+.personnel-card{
+  margin-top:14px;background:#0f171e;border:1px solid #2a3d49;border-radius:14px;
+  box-shadow:0 12px 30px rgba(0,0,0,.38);overflow:hidden;
+}
+.personnel-head{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:18px;
+  padding:14px 16px 12px;background:#111c24;border-bottom:1px solid #2a3d49;
+}
+.personnel-head h2{margin:3px 0;color:#fff;font-size:18px}
+.personnel-head p{margin:0;color:#98abb7;font-size:11px}
+.personnel-table-wrap{overflow:auto;max-height:420px;background:#080d11}
+.personnel-table{width:100%;min-width:620px;border-collapse:separate;border-spacing:0}
+.personnel-table th{
+  position:sticky;top:0;z-index:2;background:#17242d;color:#fff;text-align:left;
+  padding:9px 10px;border-right:1px solid #2c3c47;border-bottom:1px solid #3a4d58;
+}
+.personnel-table td{
+  padding:8px 10px;background:#0b1116;color:#edf4f7;
+  border-right:1px solid #24333d;border-bottom:1px solid #24333d;
+}
+.personnel-table tbody tr:nth-child(even) td{background:#10171d}
+.personnel-table tbody tr:hover td{background:#17242d}
+.personnel-card .section-kicker{color:#75cce9;font-size:9px;font-weight:900;letter-spacing:1.1px}
+@media(max-width:850px){.personnel-head{align-items:flex-start;flex-direction:column}}

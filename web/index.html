@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="dashboard-theme-version" content="solid-dark-v7-20260808">
   <title>Zone Distribution Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=zone-detail-drilldown-v10-20260809">
+  <link rel="stylesheet" href="styles.css?v=zone-exact-drilldown-v11-20260809">
 </head>
 <body>
   <header class="hero">
@@ -179,11 +179,45 @@
       </div>
     </section>
 
+    <section id="rho-directory" class="personnel-card hidden">
+      <div class="personnel-head">
+        <div>
+          <div class="section-kicker">RHO DIRECTORY</div>
+          <h2>Regional Head List</h2>
+          <p id="rho-directory-summary">Regional Heads represented in the current filtered view.</p>
+        </div>
+        <button id="close-rho-directory" class="btn ghost" type="button">Close</button>
+      </div>
+      <div class="personnel-table-wrap">
+        <table class="personnel-table">
+          <thead><tr><th>Regional Head Name</th><th>Regional Head ID</th><th>Mobile Number</th></tr></thead>
+          <tbody id="rho-directory-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="zonal-directory" class="personnel-card hidden">
+      <div class="personnel-head">
+        <div>
+          <div class="section-kicker">ZONAL DIRECTORY</div>
+          <h2>Zonal List</h2>
+          <p id="zonal-directory-summary">Zonals represented in the current filtered view.</p>
+        </div>
+        <button id="close-zonal-directory" class="btn ghost" type="button">Close</button>
+      </div>
+      <div class="personnel-table-wrap">
+        <table class="personnel-table">
+          <thead><tr><th>Zonal Name</th><th>Zonal ID</th><th>Mobile Number</th></tr></thead>
+          <tbody id="zonal-directory-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <footer class="footer">
       <strong>Refresh workflow:</strong> replace the single Excel workbook in <code>/data</code> with any filename, keep the required headers unchanged, and commit. GitHub Actions rebuilds this dashboard automatically.
     </footer>
   </main>
 
-  <script src="app.js?v=zone-detail-drilldown-v10-20260809"></script>
+  <script src="app.js?v=zone-exact-drilldown-v11-20260809"></script>
 </body>
 </html>
