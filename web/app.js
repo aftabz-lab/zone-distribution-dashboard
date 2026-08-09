@@ -259,27 +259,35 @@ function uniquePersonnel(rows,mode){
 function renderPersonnelDirectories(){
   const rhoCard=$("rho-directory"), zonalCard=$("zonal-directory");
   if(!rhoCard || !zonalCard) return;
-  rhoCard.classList.add("hidden");
-  zonalCard.classList.add("hidden");
 
-  if(state.personnelMode==="rho"){
-    const people=uniquePersonnel(state.filtered,"rho");
-    $("rho-directory-summary").textContent=`${numberFmt.format(people.length)} Regional Head(s) represented in the current filtered view.`;
-    $("rho-directory-body").innerHTML=people.length
-      ? people.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.id)}</td><td>${esc(p.mobile)}</td></tr>`).join("")
-      : `<tr><td colspan="3"><div class="empty-state">No Regional Head records found.</div></td></tr>`;
-    rhoCard.classList.remove("hidden");
-  }
+  const rhoPeople=uniquePersonnel(state.filtered,"rho");
+  const zonalPeople=uniquePersonnel(state.filtered,"zonal");
 
-  if(state.personnelMode==="zonal"){
-    const people=uniquePersonnel(state.filtered,"zonal");
-    $("zonal-directory-summary").textContent=`${numberFmt.format(people.length)} Zonal(s) represented in the current filtered view.`;
-    $("zonal-directory-body").innerHTML=people.length
-      ? people.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.id)}</td><td>${esc(p.mobile)}</td></tr>`).join("")
-      : `<tr><td colspan="3"><div class="empty-state">No Zonal records found.</div></td></tr>`;
-    zonalCard.classList.remove("hidden");
-  }
+  $("rho-directory-summary").textContent=
+    `${numberFmt.format(rhoPeople.length)} Regional Head(s) in the current filtered view.`;
+  $("rho-directory-body").innerHTML=rhoPeople.length
+    ? rhoPeople.map(p=>`<tr>
+        <td>${esc(p.name)}</td>
+        <td>${esc(p.id)}</td>
+        <td>${esc(p.mobile)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="3"><div class="empty-state">No Regional Head records found.</div></td></tr>`;
+
+  $("zonal-directory-summary").textContent=
+    `${numberFmt.format(zonalPeople.length)} Zonal(s) in the current filtered view.`;
+  $("zonal-directory-body").innerHTML=zonalPeople.length
+    ? zonalPeople.map(p=>`<tr>
+        <td>${esc(p.name)}</td>
+        <td>${esc(p.id)}</td>
+        <td>${esc(p.mobile)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="3"><div class="empty-state">No Zonal records found.</div></td></tr>`;
+
+  // Always keep both windows visible at the bottom of the dashboard.
+  rhoCard.classList.remove("hidden");
+  zonalCard.classList.remove("hidden");
 }
+
 
 function setDetailFilter(key,value,label,description="",mode="value",personnel=""){
   state.detailFilter={key,value,label,description,mode};
@@ -535,6 +543,7 @@ function renderAll(){
   renderKpis();
   renderCharts();
   renderTable();
+  renderPersonnelDirectories();
 }
 
 function initPagination(){
@@ -626,14 +635,6 @@ async function init(){
     initPagination();
     initColumnChooser();
     $("clear-detail-filter").addEventListener("click",()=>clearDetailFilter(true));
-    $("close-rho-directory").addEventListener("click",()=>{
-      state.personnelMode=null;
-      renderPersonnelDirectories();
-    });
-    $("close-zonal-directory").addEventListener("click",()=>{
-      state.personnelMode=null;
-      renderPersonnelDirectories();
-    });
     $("download-csv").addEventListener("click",downloadCsv);
     applyFilters();
   }catch(err){

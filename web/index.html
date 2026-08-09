@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="dashboard-theme-version" content="solid-dark-v7-20260808">
   <title>Zone Distribution Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=zone-exact-drilldown-v11-20260809">
+  <link rel="stylesheet" href="styles.css?v=zone-personnel-always-visible-v12-20260809">
 </head>
 <body>
   <header class="hero">
@@ -179,14 +179,13 @@
       </div>
     </section>
 
-    <section id="rho-directory" class="personnel-card hidden">
+    <section id="rho-directory" class="personnel-card">
       <div class="personnel-head">
         <div>
           <div class="section-kicker">RHO DIRECTORY</div>
           <h2>Regional Head List</h2>
-          <p id="rho-directory-summary">Regional Heads represented in the current filtered view.</p>
+          <p id="rho-directory-summary">Regional Heads represented in the current filtered view — updates automatically with filters.</p>
         </div>
-        <button id="close-rho-directory" class="btn ghost" type="button">Close</button>
       </div>
       <div class="personnel-table-wrap">
         <table class="personnel-table">
@@ -196,14 +195,13 @@
       </div>
     </section>
 
-    <section id="zonal-directory" class="personnel-card hidden">
+    <section id="zonal-directory" class="personnel-card">
       <div class="personnel-head">
         <div>
           <div class="section-kicker">ZONAL DIRECTORY</div>
           <h2>Zonal List</h2>
-          <p id="zonal-directory-summary">Zonals represented in the current filtered view.</p>
+          <p id="zonal-directory-summary">Zonals represented in the current filtered view — updates automatically with filters.</p>
         </div>
-        <button id="close-zonal-directory" class="btn ghost" type="button">Close</button>
       </div>
       <div class="personnel-table-wrap">
         <table class="personnel-table">
@@ -218,6 +216,6 @@
     </footer>
   </main>
 
-  <script src="app.js?v=zone-exact-drilldown-v11-20260809"></script>
+  <script src="app.js?v=zone-personnel-always-visible-v12-20260809"></script>
 </body>
 </html>

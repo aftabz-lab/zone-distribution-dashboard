@@ -639,3 +639,31 @@ select option:checked{
 .personnel-table tbody tr:hover td{background:#17242d}
 .personnel-card .section-kicker{color:#75cce9;font-size:9px;font-weight:900;letter-spacing:1.1px}
 @media(max-width:850px){.personnel-head{align-items:flex-start;flex-direction:column}}
+
+
+/* ============================================================
+   v12 — RHO and Zonal directories always visible at dashboard end
+   ============================================================ */
+
+#rho-directory,
+#zonal-directory{
+  display:block !important;
+}
+
+#rho-directory.hidden,
+#zonal-directory.hidden{
+  display:block !important;
+}
+
+.personnel-card{
+  scroll-margin-top:18px;
+}
+
+.personnel-head{
+  align-items:flex-start;
+}
+
+.personnel-table td:nth-child(2),
+.personnel-table td:nth-child(3){
+  font-variant-numeric:tabular-nums;
+}
