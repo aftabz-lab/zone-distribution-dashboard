@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark">
   <meta name="dashboard-theme-version" content="solid-dark-v7-20260808">
   <title>Zone Distribution Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=zone-sticky-cascade-v9-20260809">
+  <link rel="stylesheet" href="styles.css?v=zone-detail-drilldown-v10-20260809">
 </head>
 <body>
   <header class="hero">
@@ -141,12 +141,16 @@
       </article>
     </section>
 
-    <section class="table-card">
+    <section id="detail-view" class="table-card">
       <div class="table-toolbar">
         <div>
           <span class="section-kicker">DETAIL VIEW</span>
           <h2 id="table-title">Outlet-wise Zone Distribution</h2>
           <p id="table-summary">Loading rows…</p>
+          <div id="detail-filter-chip" class="detail-filter-chip hidden">
+            <span id="detail-filter-text"></span>
+            <button id="clear-detail-filter" type="button">Clear ×</button>
+          </div>
         </div>
         <label class="page-size">
           <span>Rows per page</span>
@@ -180,6 +184,6 @@
     </footer>
   </main>
 
-  <script src="app.js?v=zone-sticky-cascade-v9-20260809"></script>
+  <script src="app.js?v=zone-detail-drilldown-v10-20260809"></script>
 </body>
 </html>

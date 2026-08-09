@@ -503,3 +503,109 @@ select option:checked{
     max-height:calc(100vh - 8px);
   }
 }
+
+
+/* ============================================================
+   v10 — Clickable chart/KPI drill-down to DETAIL VIEW
+   ============================================================ */
+
+/* 10 KPI cards including RHO Qty + Zonal Qty */
+#kpi-grid.kpi-grid{
+  grid-template-columns:repeat(10,minmax(0,1fr)) !important;
+}
+
+/* Clickable numbers outside donut circles / beside bars */
+.drill-count-btn{
+  appearance:none;
+  -webkit-appearance:none;
+  border:0;
+  background:transparent !important;
+  padding:0;
+  margin:0;
+  min-width:0;
+  color:#8de0ff !important;
+  font:inherit;
+  font-weight:900 !important;
+  text-align:right;
+  cursor:pointer;
+  text-decoration:underline;
+  text-decoration-color:rgba(141,224,255,.42);
+  text-underline-offset:2px;
+}
+
+.drill-count-btn:hover,
+.drill-count-btn:focus-visible{
+  color:#ffffff !important;
+  text-decoration-color:#ffffff;
+  outline:none;
+}
+
+/* RHO Qty / Zonal Qty clickable KPI values */
+.kpi-drill-value{
+  display:block;
+  width:max-content;
+  max-width:100%;
+  border:0;
+  background:transparent !important;
+  padding:0;
+  margin-top:7px;
+  color:#8de0ff !important;
+  cursor:pointer;
+  text-decoration:underline;
+  text-decoration-color:rgba(141,224,255,.42);
+  text-underline-offset:3px;
+}
+
+.kpi-drill-value:hover,
+.kpi-drill-value:focus-visible{
+  color:#ffffff !important;
+  outline:none;
+  text-decoration-color:#ffffff;
+}
+
+/* Active DETAIL VIEW drill-down indicator */
+.detail-filter-chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:max-content;
+  max-width:100%;
+  margin-top:7px;
+  padding:5px 8px;
+  border-radius:7px;
+  border:1px solid #375362;
+  background:#13232d;
+  color:#cfe3ec;
+  font-size:10px;
+  font-weight:750;
+}
+
+.detail-filter-chip button{
+  border:0;
+  background:#263c48;
+  color:#ffffff;
+  border-radius:5px;
+  padding:3px 7px;
+  font-size:9px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.detail-filter-chip button:hover{
+  background:#355365;
+}
+
+#detail-view{
+  scroll-margin-top:18px;
+}
+
+@media(max-width:1700px){
+  #kpi-grid.kpi-grid{
+    grid-template-columns:repeat(5,minmax(0,1fr)) !important;
+  }
+}
+@media(max-width:900px){
+  #kpi-grid.kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+}

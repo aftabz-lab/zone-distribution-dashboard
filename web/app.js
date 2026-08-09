@@ -48,6 +48,7 @@ const state = {
   page:1,
   pageSize:100,
   visibleColumns:new Set(COLUMNS.map(c=>c[0])),
+  detailFilter:null,
 };
 
 const $ = id => document.getElementById(id);
@@ -131,6 +132,7 @@ function initFilters(){
     select.addEventListener("change",()=>{
       state.filters[select.dataset.filter]=select.value;
       state.page=1;
+      clearDetailFilter(false);
       syncCascadingFilters();
       applyFilters(false);
     });
@@ -139,6 +141,7 @@ function initFilters(){
   $("global-search").addEventListener("input",e=>{
     state.search=e.target.value;
     state.page=1;
+    clearDetailFilter(false);
     // Search affects results immediately; dropdown selections are preserved.
     applyFilters(false);
   });
@@ -148,6 +151,7 @@ function initFilters(){
     state.filters={};
     $("global-search").value="";
     state.page=1;
+    clearDetailFilter(false);
     syncCascadingFilters();
     applyFilters(false);
   });
@@ -168,6 +172,70 @@ function applyFilters(syncFacets=true){
 
   sortRows();
   renderAll();
+}
+
+function clearDetailFilter(render=true){
+  state.detailFilter=null;
+  state.page=1;
+  if(render) renderTable();
+}
+
+function detailFilteredRows(){
+  if(!state.detailFilter) return state.filtered;
+
+  const f=state.detailFilter;
+  if(f.mode==="nonblank"){
+    return state.filtered.filter(row=>String(row[f.key] ?? "").trim()!=="");
+  }
+  return state.filtered.filter(row=>String(row[f.key] ?? "")===String(f.value ?? ""));
+}
+
+function renderDetailFilterChip(){
+  const chip=$("detail-filter-chip");
+  const text=$("detail-filter-text");
+  if(!chip || !text) return;
+
+  if(!state.detailFilter){
+    chip.classList.add("hidden");
+    text.textContent="";
+    return;
+  }
+
+  const f=state.detailFilter;
+  text.textContent=f.description || (
+    f.mode==="nonblank"
+      ? `${f.label || f.key}: mapped outlets`
+      : `${f.label || f.key}: ${f.value}`
+  );
+  chip.classList.remove("hidden");
+}
+
+function scrollToDetailView(){
+  const target=$("detail-view");
+  if(target){
+    target.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+}
+
+function setDetailFilter(key,value,label,description="",mode="value"){
+  state.detailFilter={key,value,label,description,mode};
+  state.page=1;
+  renderTable();
+  scrollToDetailView();
+}
+
+function attachDrilldownHandlers(target){
+  target.querySelectorAll("[data-drill-key]").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      setDetailFilter(
+        btn.dataset.drillKey,
+        btn.dataset.drillValue || "",
+        btn.dataset.drillLabel || btn.dataset.drillKey,
+        btn.dataset.drillDescription || "",
+        btn.dataset.drillMode || "value"
+      );
+    });
+  });
 }
 
 function compareValues(a,b,type){
@@ -211,19 +279,65 @@ function renderKpis(){
   const r=state.filtered;
   const totalSft=sum(r,"SFT");
   const avgSft=r.length?totalSft/r.length:0;
+  const rhoQty=countDistinct(r,"Regional Head HR Name");
+  const zonalQty=countDistinct(r,"Zonal HR Name");
+
   const defs=[
-    ["Visible Outlets",numberFmt.format(r.length),`${numberFmt.format(state.rows.length)} total source rows`,"accent"],
-    ["Total SFT",numberFmt.format(Math.round(totalSft)),"filtered network area",""],
-    ["Average SFT",numberFmt.format(Math.round(avgSft)),"per visible outlet",""],
-    ["PNP",numberFmt.format(countValue(r,"PNP Non PNP status","PNP")),"visible outlets","accent"],
-    ["Non-PNP",numberFmt.format(countValue(r,"PNP Non PNP status","Non-PNP")),"visible outlets",""],
-    ["OWN",numberFmt.format(countValue(r,"Status","OWN")),"visible outlets","accent"],
-    ["FR",numberFmt.format(countValue(r,"Status","FR")),"visible outlets",""],
-    ["Districts",numberFmt.format(countDistinct(r,"District")),"represented in current view",""],
+    {label:"Visible Outlets",value:numberFmt.format(r.length),note:`${numberFmt.format(state.rows.length)} total source rows`,cls:"accent"},
+    {label:"Total SFT",value:numberFmt.format(Math.round(totalSft)),note:"filtered network area",cls:""},
+    {label:"Average SFT",value:numberFmt.format(Math.round(avgSft)),note:"per visible outlet",cls:""},
+    {label:"PNP",value:numberFmt.format(countValue(r,"PNP Non PNP status","PNP")),note:"visible outlets",cls:"accent"},
+    {label:"Non-PNP",value:numberFmt.format(countValue(r,"PNP Non PNP status","Non-PNP")),note:"visible outlets",cls:""},
+    {label:"OWN",value:numberFmt.format(countValue(r,"Status","OWN")),note:"visible outlets",cls:"accent"},
+    {label:"FR",value:numberFmt.format(countValue(r,"Status","FR")),note:"visible outlets",cls:""},
+    {
+      label:"RHO Qty",
+      value:numberFmt.format(rhoQty),
+      note:"regional heads in current view",
+      cls:"accent",
+      drill:{
+        key:"Regional Head HR Name",
+        value:"",
+        label:"RHO Qty",
+        mode:"nonblank",
+        description:`RHO-mapped outlets in current view (${numberFmt.format(rhoQty)} RHO)`
+      }
+    },
+    {
+      label:"Zonal Qty",
+      value:numberFmt.format(zonalQty),
+      note:"zonals in current view",
+      cls:"",
+      drill:{
+        key:"Zonal HR Name",
+        value:"",
+        label:"Zonal Qty",
+        mode:"nonblank",
+        description:`Zonal-mapped outlets in current view (${numberFmt.format(zonalQty)} Zonal)`
+      }
+    },
+    {label:"Districts",value:numberFmt.format(countDistinct(r,"District")),note:"represented in current view",cls:""},
   ];
-  $("kpi-grid").innerHTML=defs.map(([label,value,note,cls])=>
-    `<article class="kpi ${cls}"><div class="kpi-label">${esc(label)}</div><div class="kpi-value">${esc(value)}</div><div class="kpi-note">${esc(note)}</div></article>`
-  ).join("");
+
+  $("kpi-grid").innerHTML=defs.map(d=>{
+    const valueHtml=d.drill
+      ? `<button type="button" class="kpi-value kpi-drill-value"
+          data-drill-key="${esc(d.drill.key)}"
+          data-drill-value="${esc(d.drill.value)}"
+          data-drill-label="${esc(d.drill.label)}"
+          data-drill-mode="${esc(d.drill.mode)}"
+          data-drill-description="${esc(d.drill.description)}"
+          title="Show related outlets in Detail View">${esc(d.value)}</button>`
+      : `<div class="kpi-value">${esc(d.value)}</div>`;
+
+    return `<article class="kpi ${d.cls}">
+      <div class="kpi-label">${esc(d.label)}</div>
+      ${valueHtml}
+      <div class="kpi-note">${esc(d.note)}</div>
+    </article>`;
+  }).join("");
+
+  attachDrilldownHandlers($("kpi-grid"));
 }
 
 function frequencies(rows,key){
@@ -237,6 +351,7 @@ function frequencies(rows,key){
 function renderDonut(targetId,key){
   const target=$(targetId), entries=frequencies(state.filtered,key);
   if(!state.filtered.length){ target.innerHTML=`<div class="empty-state">No matching rows</div>`; return; }
+
   const total=entries.reduce((a,b)=>a+b[1],0);
   let angle=0, stops=[];
   entries.forEach(([label,value],i)=>{
@@ -244,19 +359,53 @@ function renderDonut(targetId,key){
     stops.push(`${COLORS[i%COLORS.length]} ${angle}% ${angle+pct}%`);
     angle+=pct;
   });
+
   const legend=entries.slice(0,8).map(([label,value],i)=>
-    `<div class="legend-row"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span><span class="legend-label" title="${esc(label)}">${esc(label)}</span><span class="legend-value">${numberFmt.format(value)}</span></div>`
+    `<div class="legend-row">
+      <span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>
+      <span class="legend-label" title="${esc(label)}">${esc(label)}</span>
+      <button type="button"
+        class="legend-value drill-count-btn"
+        data-drill-key="${esc(key)}"
+        data-drill-value="${esc(label)}"
+        data-drill-label="${esc(key)}"
+        data-drill-description="${esc(`${key}: ${label}`)}"
+        title="Show these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
+    </div>`
   ).join("");
-  target.innerHTML=`<div class="donut-wrap"><div class="donut" style="background:conic-gradient(${stops.join(",")})"><div class="donut-center">${numberFmt.format(total)}</div></div><div class="legend">${legend}</div></div>`;
+
+  target.innerHTML=`<div class="donut-wrap">
+    <div class="donut" style="background:conic-gradient(${stops.join(",")})">
+      <div class="donut-center">${numberFmt.format(total)}</div>
+    </div>
+    <div class="legend">${legend}</div>
+  </div>`;
+
+  attachDrilldownHandlers(target);
 }
+
 function renderBars(targetId,key,limit=7){
   const target=$(targetId), entries=frequencies(state.filtered,key).slice(0,limit);
   if(!entries.length){ target.innerHTML=`<div class="empty-state">No matching rows</div>`; return; }
+
   const max=entries[0][1] || 1;
   target.innerHTML=`<div class="bars">${entries.map(([label,value])=>
-    `<div class="bar-row"><div class="bar-label" title="${esc(label)}">${esc(label)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,value/max*100)}%"></div></div><div class="bar-value">${numberFmt.format(value)}</div></div>`
+    `<div class="bar-row">
+      <div class="bar-label" title="${esc(label)}">${esc(label)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,value/max*100)}%"></div></div>
+      <button type="button"
+        class="bar-value drill-count-btn"
+        data-drill-key="${esc(key)}"
+        data-drill-value="${esc(label)}"
+        data-drill-label="${esc(key)}"
+        data-drill-description="${esc(`${key}: ${label}`)}"
+        title="Show these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
+    </div>`
   ).join("")}</div>`;
+
+  attachDrilldownHandlers(target);
 }
+
 function renderCharts(){
   renderDonut("chart-format","Format");
   renderDonut("chart-status","Status");
@@ -300,9 +449,10 @@ function renderCell(row,col){
   return `<td class="${cls}"${title}>${esc(display)}</td>`;
 }
 function pageRows(){
-  if(state.pageSize==="all") return state.filtered;
+  const rows=detailFilteredRows();
+  if(state.pageSize==="all") return rows;
   const start=(state.page-1)*state.pageSize;
-  return state.filtered.slice(start,start+state.pageSize);
+  return rows.slice(start,start+state.pageSize);
 }
 function renderTable(){
   renderHead();
@@ -312,12 +462,14 @@ function renderTable(){
     ? rows.map(row=>`<tr>${columns.map(col=>renderCell(row,col)).join("")}</tr>`).join("")
     : `<tr><td colspan="${Math.max(1,columns.length)}"><div class="empty-state">No rows match the current filters.</div></td></tr>`;
 
-  const total=state.filtered.length;
+  const detailRows=detailFilteredRows();
+  const total=detailRows.length;
   const pageCount=state.pageSize==="all"?1:Math.max(1,Math.ceil(total/state.pageSize));
   if(state.page>pageCount) state.page=pageCount;
   const from=total===0?0:(state.pageSize==="all"?1:(state.page-1)*state.pageSize+1);
   const to=state.pageSize==="all"?total:Math.min(total,state.page*state.pageSize);
-  $("table-summary").textContent=`${numberFmt.format(total)} visible outlets · showing ${numberFmt.format(from)}–${numberFmt.format(to)} · sorted by ${state.sortKey} ${state.sortDirection==="asc"?"ascending":"descending"}`;
+  $("table-summary").textContent=`${numberFmt.format(total)} detail outlet(s) · showing ${numberFmt.format(from)}–${numberFmt.format(to)} · sorted by ${state.sortKey} ${state.sortDirection==="asc"?"ascending":"descending"}`;
+  renderDetailFilterChip();
   $("page-info").textContent=state.pageSize==="all"?`All ${numberFmt.format(total)} rows`:`Page ${state.page} of ${pageCount}`;
   $("prev-page").disabled=state.page<=1 || state.pageSize==="all";
   $("next-page").disabled=state.page>=pageCount || state.pageSize==="all";
@@ -338,7 +490,7 @@ function initPagination(){
   $("prev-page").addEventListener("click",()=>{if(state.page>1){state.page--;renderTable();}});
   $("next-page").addEventListener("click",()=>{
     if(state.pageSize==="all") return;
-    const pages=Math.ceil(state.filtered.length/state.pageSize);
+    const pages=Math.ceil(detailFilteredRows().length/state.pageSize);
     if(state.page<pages){state.page++;renderTable();}
   });
 }
@@ -374,7 +526,7 @@ function csvCell(value){
 function downloadCsv(){
   const cols=COLUMNS;
   const lines=[cols.map(c=>csvCell(c[1])).join(",")];
-  state.filtered.forEach(r=>lines.push(cols.map(c=>csvCell(r[c[0]])).join(",")));
+  detailFilteredRows().forEach(r=>lines.push(cols.map(c=>csvCell(r[c[0]])).join(",")));
   const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
@@ -416,6 +568,7 @@ async function init(){
     initFilters();
     initPagination();
     initColumnChooser();
+    $("clear-detail-filter").addEventListener("click",()=>clearDetailFilter(true));
     $("download-csv").addEventListener("click",downloadCsv);
     applyFilters();
   }catch(err){
