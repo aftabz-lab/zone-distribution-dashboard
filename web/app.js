@@ -61,61 +61,111 @@ function formatDate(value){
   return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
 function normalize(value){ return String(value ?? "").trim().toLocaleLowerCase(); }
-function uniqueSorted(key){
-  return [...new Set(state.rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
+function uniqueSortedFromRows(rows,key){
+  return [...new Set(rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
     .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"}));
 }
-function populateSelect(select){
+
+function rowMatchesSearch(row){
+  const search=normalize(state.search);
+  if(!search) return true;
+  for(const [key] of COLUMNS){
+    if(normalize(row[key]).includes(search)) return true;
+  }
+  return false;
+}
+
+function rowMatchesFilters(row,excludeKey=""){
+  for(const [key,value] of Object.entries(state.filters)){
+    if(!value || key===excludeKey) continue;
+    if(String(row[key] ?? "") !== value) return false;
+  }
+  return true;
+}
+
+function rowsForFacet(key){
+  return state.rows.filter(row=>rowMatchesSearch(row) && rowMatchesFilters(row,key));
+}
+
+function populateSelect(select,rows=null){
   const key=select.dataset.filter;
   const current=state.filters[key] || "";
-  const opts=uniqueSorted(key);
+  const sourceRows=rows || state.rows;
+  const opts=uniqueSortedFromRows(sourceRows,key);
   select.innerHTML=`<option value="">All</option>`+opts.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  if(opts.includes(current)) select.value=current;
+  if(current && opts.includes(current)) select.value=current;
+  else select.value="";
 }
+
+function syncCascadingFilters(){
+  const selects=[...document.querySelectorAll("select[data-filter]")];
+
+  // If a newly selected filter makes another active filter impossible,
+  // clear only the impossible filter. Repeat until the combination is valid.
+  for(let pass=0;pass<selects.length;pass++){
+    let changed=false;
+    for(const select of selects){
+      const key=select.dataset.filter;
+      const current=state.filters[key] || "";
+      if(!current) continue;
+      const allowed=uniqueSortedFromRows(rowsForFacet(key),key);
+      if(!allowed.includes(current)){
+        state.filters[key]="";
+        changed=true;
+      }
+    }
+    if(!changed) break;
+  }
+
+  // Faceted/cascading dropdowns:
+  // each dropdown shows only values compatible with all OTHER active filters.
+  for(const select of selects){
+    populateSelect(select,rowsForFacet(select.dataset.filter));
+  }
+}
+
 function initFilters(){
-  document.querySelectorAll("select[data-filter]").forEach(select=>{
+  const selects=[...document.querySelectorAll("select[data-filter]")];
+  selects.forEach(select=>{
     populateSelect(select);
     select.addEventListener("change",()=>{
       state.filters[select.dataset.filter]=select.value;
       state.page=1;
-      applyFilters();
+      syncCascadingFilters();
+      applyFilters(false);
     });
   });
+
   $("global-search").addEventListener("input",e=>{
     state.search=e.target.value;
     state.page=1;
-    applyFilters();
+    // Search affects results immediately; dropdown selections are preserved.
+    applyFilters(false);
   });
+
   $("reset-filters").addEventListener("click",()=>{
     state.search="";
     state.filters={};
     $("global-search").value="";
-    document.querySelectorAll("select[data-filter]").forEach(s=>{s.value="";});
     state.page=1;
-    applyFilters();
+    syncCascadingFilters();
+    applyFilters(false);
   });
+
   $("advanced-toggle").addEventListener("click",()=>{
     $("advanced-filters").classList.toggle("hidden");
     $("advanced-toggle").textContent=$("advanced-filters").classList.contains("hidden")?"More filters":"Fewer filters";
   });
 }
 
-function applyFilters(){
-  const search=normalize(state.search);
-  const active=Object.entries(state.filters).filter(([,v])=>v);
+function applyFilters(syncFacets=true){
+  if(syncFacets) syncCascadingFilters();
+
   state.filtered=state.rows.filter(row=>{
-    for(const [key,value] of active){
-      if(String(row[key] ?? "") !== value) return false;
-    }
-    if(search){
-      let found=false;
-      for(const [key] of COLUMNS){
-        if(normalize(row[key]).includes(search)){found=true;break;}
-      }
-      if(!found) return false;
-    }
-    return true;
+    if(!rowMatchesSearch(row)) return false;
+    return rowMatchesFilters(row);
   });
+
   sortRows();
   renderAll();
 }

@@ -450,3 +450,56 @@ select option:checked{
   background:#1f5fbf !important;
   color:#ffffff !important;
 }
+
+
+/* ============================================================
+   v9 — Sticky filter command center + cascading-filter polish
+   ============================================================ */
+
+/* Keep the complete filter/control section visible while the page scrolls. */
+.filter-panel{
+  position: sticky !important;
+  top: 8px !important;
+  z-index: 60 !important;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 14px 34px rgba(0,0,0,.48) !important;
+}
+
+/* Prevent sticky panel from visually merging into content underneath. */
+.filter-panel{
+  outline: 1px solid rgba(76,111,130,.20);
+}
+
+/* The panel's own scrollbar stays dark if More filters is expanded. */
+.filter-panel{
+  scrollbar-color: #415966 #0b151c;
+}
+.filter-panel::-webkit-scrollbar{
+  width: 9px;
+}
+.filter-panel::-webkit-scrollbar-track{
+  background:#0b151c;
+}
+.filter-panel::-webkit-scrollbar-thumb{
+  background:#415966;
+  border:2px solid #0b151c;
+  border-radius:10px;
+}
+
+/* Cascading-filter visual hint: available values remain crisp and readable. */
+.field select{
+  cursor:pointer;
+}
+.field select:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+@media(max-width:800px){
+  .filter-panel{
+    top:4px !important;
+    max-height:calc(100vh - 8px);
+  }
+}
