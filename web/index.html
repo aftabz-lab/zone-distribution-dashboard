@@ -17,6 +17,7 @@
     </div>
     <div class="hero-meta">
       <span id="source-badge" class="meta-badge">Loading source…</span>
+      <span id="local-badge" class="meta-badge" hidden></span>
       <span id="quality-badge" class="meta-badge">Validating…</span>
     </div>
   </header>
@@ -216,6 +217,17 @@
     </footer>
   </main>
 
+  <div id="local-source" class="local-source">
+    <span class="ls-label">Data source</span>
+    <span id="ls-state" class="ls-state">Published data</span>
+    <button id="ls-grant" class="btn-ghost" type="button" hidden>Allow folder access</button>
+    <button id="ls-pick" class="btn-ghost" type="button">Use a folder on this computer</button>
+    <button id="ls-forget" class="btn-ghost" type="button" hidden>Back to published data</button>
+    <input id="ls-file" type="file" accept=".xlsx,.xlsm" hidden />
+    <button id="ls-file-btn" class="btn-ghost" type="button">Single file</button>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="app.js?v=zone-rho-zonal-exclusive-v13-20260809"></script>
+  <script type="module" src="local-source-init.js?v=1"></script>
 </body>
 </html>

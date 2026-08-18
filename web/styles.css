@@ -667,3 +667,21 @@ select option:checked{
 .personnel-table td:nth-child(3){
   font-variant-numeric:tabular-nums;
 }
+
+/* Local folder source bar — pinned bottom-left, out of the way of the report. */
+.local-source {
+  position: fixed; left: 14px; bottom: 14px; z-index: 40; display: flex; align-items: center;
+  gap: 8px; flex-wrap: wrap; max-width: min(660px, calc(100vw - 28px));
+  padding: 8px 12px; border-radius: 10px; font-size: 11.5px;
+  background: rgba(17, 24, 33, .95); border: 1px solid #2c3e50; color: #cfe0ec;
+  box-shadow: 0 6px 22px rgba(0,0,0,.35);
+}
+.local-source .ls-label { font-weight: 800; letter-spacing: .09em; text-transform: uppercase; font-size: 9.5px; color: #8fb2c9; }
+.local-source .ls-state { font-weight: 600; }
+.local-source .ls-state b { color: #fff; }
+.local-source .btn-ghost {
+  background: #1b2836; color: #7fc4ea; border: 1px solid #2f5570; border-radius: 7px;
+  padding: 5px 11px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.local-source .btn-ghost:hover { background: #24384c; color: #fff; }
+@media print { .local-source { display: none; } }

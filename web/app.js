@@ -666,6 +666,11 @@ async function init(){
     $("clear-detail-filter").addEventListener("click",()=>clearDetailFilter(true));
     $("download-csv").addEventListener("click",downloadCsv);
     applyFilters();
+
+    // Exposed so local-source-init.js can swap in rows read from a folder on
+    // this computer and re-render, without duplicating any of the logic above.
+    window.__dashboardState = state;
+    window.__dashboardRefresh = () => { initFilters(); applyFilters(); };
   }catch(err){
     document.body.innerHTML=`<div style="padding:40px;font-family:Segoe UI,Arial"><h2>Dashboard could not load</h2><p>${esc(err.message)}</p><p>Run <code>python scripts/build.py</code> and deploy the generated <code>site</code> folder.</p></div>`;
   }
