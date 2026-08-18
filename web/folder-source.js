@@ -60,23 +60,25 @@ async function dbDelete(store, key) {
 const fileSignature = (file) => `${file.name}|${file.lastModified}|${file.size}`;
 
 /**
- * Newest workbook in a folder. A date in the filename wins over the modified
- * time, so "…_2026-08-17.xlsx" beats a file merely touched later.
+ * Every workbook in the folder, newest first. A date in the filename outranks the
+ * modified time, so "…_2026-08-17.xlsx" beats a file merely touched later.
+ *
+ * All candidates are returned rather than just the newest, because a shared data
+ * folder holds workbooks for several dashboards. Picking the newest file outright
+ * makes a dashboard read another dashboard's export; the caller decides which
+ * files it actually understands.
  */
-async function newestWorkbook(handle, pattern) {
-  let best = null;
+async function candidateWorkbooks(handle) {
+  const found = [];
   for await (const [name, entry] of handle.entries()) {
     if (entry.kind !== "file") continue;
     if (name.startsWith("~$") || !/\.xlsx$|\.xlsm$/i.test(name)) continue;
-    if (pattern && !pattern.test(name)) continue;
     const file = await entry.getFile();
     const matched = name.match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})/);
-    const key = [matched ? `${matched[1]}${matched[2]}${matched[3]}` : "", file.lastModified];
-    if (!best || key[0] > best.key[0] || (key[0] === best.key[0] && key[1] > best.key[1])) {
-      best = { file, key };
-    }
+    found.push({ file, stamp: matched ? `${matched[1]}${matched[2]}${matched[3]}` : "", modified: file.lastModified });
   }
-  return best;
+  found.sort((a, b) => (b.stamp.localeCompare(a.stamp)) || (b.modified - a.modified));
+  return found.map((c) => c.file);
 }
 
 export function createFolderSource({
@@ -84,7 +86,8 @@ export function createFolderSource({
   parse,              // async (File) -> payload for the dashboard
   onData,             // (payload, info) -> render it
   onStatus,           // (state) -> update the UI
-  filePattern = null, // optional RegExp to narrow which files count
+  filePattern = null, // optional RegExp: a quick name check before opening a file
+  accepts = null,     // async (File) -> boolean: does this workbook fit this dashboard?
   pollMs = 5000,
 }) {
   const state = { handle: null, signature: "", fileName: "", savedAt: 0, stale: false, watching: false };
@@ -92,7 +95,7 @@ export function createFolderSource({
   const status = (kind, detail = {}) =>
     onStatus?.({ kind, fileName: state.fileName, savedAt: state.savedAt, stale: state.stale, ...detail });
 
-  async function useFile(file, { cache = true } = {}) {
+  async function useFile(file, { cache = true, skipped = 0 } = {}) {
     status("reading", { fileName: file.name, sizeMb: file.size / 1048576 });
     await new Promise((r) => setTimeout(r, 20));   // let the status paint first
     const payload = await parse(file);
@@ -103,7 +106,7 @@ export function createFolderSource({
       await dbPut("cache", id, { payload, fileName: file.name, signature: state.signature, savedAt: Date.now() });
     }
     onData(payload, { fileName: file.name, stale: false });
-    status("live");
+    status("live", { skipped });
   }
 
   async function sync({ silent = true } = {}) {
@@ -113,18 +116,33 @@ export function createFolderSource({
     if (permission !== "granted") { status("needs-permission"); return; }
 
     try {
-      const newest = await newestWorkbook(state.handle, filePattern);
-      if (!newest) {
+      const candidates = await candidateWorkbooks(state.handle);
+      const named = filePattern ? candidates.filter((f) => filePattern.test(f.name)) : [];
+      // Names that look right are tried first; otherwise every workbook is offered
+      // to accepts() so a renamed export is still found.
+      const ordered = [...named, ...candidates.filter((f) => !named.includes(f))];
+
+      let chosen = null;
+      let skipped = 0;
+      for (const file of ordered) {
+        if (!accepts) { chosen = file; break; }
+        let ok = false;
+        try { ok = await accepts(file); } catch { ok = false; }
+        if (ok) { chosen = file; break; }
+        skipped += 1;
+      }
+
+      if (!chosen) {
         if (state.signature || !silent) {
           state.signature = ""; state.fileName = "";
           await dbDelete("cache", id);
           onData(null, { fileName: "", stale: false });
-          status("empty");
+          status(candidates.length ? "no-match" : "empty", { skipped, checked: candidates.length });
         }
         return;
       }
-      if (fileSignature(newest.file) !== state.signature) await useFile(newest.file);
-      else status("live");
+      if (fileSignature(chosen) !== state.signature) await useFile(chosen, { skipped });
+      else status("live", { skipped });
     } catch (error) {
       if (!silent) status("error", { message: error.message });
     }

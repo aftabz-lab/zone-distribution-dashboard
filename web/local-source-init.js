@@ -34,8 +34,29 @@ function applyRows(rows, info) {
   $("ls-forget").hidden = !rows;
 }
 
+// Reads only the first few rows, which is enough to see whether a workbook
+// carries this dashboard's columns — quick even for a very large file.
+async function looksLikeZoneWorkbook(file) {
+  try {
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", sheetRows: 6, cellStyles: false });
+    const wanted = state.requiredHeaders.map((h) => String(h).trim().toLowerCase());
+    for (const sheetName of workbook.SheetNames) {
+      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "", blankrows: false });
+      for (const line of grid.slice(0, 5)) {
+        const lower = line.map((c) => String(c).trim().toLowerCase());
+        const hits = wanted.filter((h) => lower.includes(h)).length;
+        if (hits >= Math.max(3, Math.ceil(wanted.length * 0.6))) return true;
+      }
+    }
+  } catch { /* unreadable file - just skip it */ }
+  return false;
+}
+
 const source = createFolderSource({
   id: "zone-distribution",
+  // A folder shared by several dashboards will hold other exports too.
+  filePattern: /zone|distribution|outlet/i,
+  accepts: looksLikeZoneWorkbook,
   parse: async (file) => {
     const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, cellStyles: false });
     const { rows, sheetName } = rowsFromWorkbook(workbook, state.requiredHeaders, XLSX);
@@ -52,7 +73,8 @@ const source = createFolderSource({
       "cached": `Saved copy of <b>${s.fileName || "local file"}</b>`,
       "reading": `Reading <b>${s.fileName}</b>${s.sizeMb ? ` (${s.sizeMb.toFixed(1)} MB)` : ""}…`,
       "live": `Live from <b>${s.fileName}</b>`,
-      "empty": "Chosen folder has no matching Excel file",
+      "empty": "Chosen folder has no Excel file",
+      "no-match": `No workbook in that folder has this dashboard's columns${s.checked ? ` (checked ${s.checked})` : ""}`,
       "needs-permission": "Folder remembered — one click to reopen it",
       "unsupported": "This browser cannot open folders — use Chrome or Edge, or pick a single file",
       "error": `Could not read the folder: ${s.message || "unknown error"}`,
