@@ -273,7 +273,7 @@ def main() -> int:
         SITE_DIR.mkdir(parents=True, exist_ok=True)
         (SITE_DIR / "data").mkdir(parents=True, exist_ok=True)
 
-        for filename in ("index.html", "app.js", "styles.css", "folder-source.js", "local-source-init.js", "drive-owner-mode.js"):
+        for filename in ("index.html", "app.js", "styles.css", "folder-source.js", "local-source-init.js", "drive-owner-mode.js", "cloud-snapshot.js", "supabase-sync.js"):
             shutil.copy2(WEB_DIR / filename, SITE_DIR / filename)
 
         payload = {
