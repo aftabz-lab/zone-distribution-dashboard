@@ -123,7 +123,31 @@ async function dbGet(s,key){try{const db=await openDb();return await new Promise
 async function dbPut(s,key,v){try{const db=await openDb();await new Promise(res=>{const r=db.transaction(s,'readwrite').objectStore(s).put(v,key);r.onsuccess=()=>res();r.onerror=()=>res()})}catch{}}
 const snapshotTime=value=>{const parsed=Date.parse(value?.savedAt||value?.cloudUpdatedAt||'');return Number.isFinite(parsed)?parsed:0};
 async function readZoneShared(){try{const cloud=await cloudModulePromise;return await cloud?.readZoneSnapshot?.()||null}catch(error){console.warn('Zone shared snapshot unavailable:',error);return null}}
-async function publishZoneShared(candidate){if(!candidate?.rows?.length||candidate.sourceKind==='shared-cloud')return;try{const cloud=await cloudModulePromise;const result=await cloud?.publishZoneSnapshot?.(candidate);if(result?.published&&snapshot===candidate)setStatus('live','Live from Google Drive. Shared snapshot updated for other PCs.')}catch(error){console.warn('Zone shared snapshot publish failed:',error)}}
+async function readPublishedZone(){
+ try{
+  const response=await fetch(`data/dashboard_data.json?_=${Date.now()}`,{cache:'no-store'});
+  if(!response.ok)throw new Error(`HTTP ${response.status}`);
+  const payload=await response.json(),sourceRows=Array.isArray(payload?.rows)?payload.rows:[];
+  if(!sourceRows.length)return null;
+  const labels=(Array.isArray(payload?.schema?.requiredHeaders)&&payload.schema.requiredHeaders.length?payload.schema.requiredHeaders:Object.keys(sourceRows[0]||{})).filter(Boolean);
+  const columns=labels.map((label,index)=>({index,label:String(label)}));
+  const map=new Map();
+  for(const raw of sourceRows){
+   const values=new Map(Object.entries(raw||{}).map(([label,value])=>[k(label),value]));
+   const get=field=>{for(const alias of FIELDS[field]?.aliases||[]){const key=k(alias);if(values.has(key))return values.get(key)}return''};
+   const code=txt(get('code')).toUpperCase();if(!code)continue;
+   const launchDate=parseDate(get('launchDate'));
+   const record={code,outletName:txt(get('outletName')),regionalHead:txt(get('regionalHead')),leader:txt(get('leader')),zonal:txt(get('zonal')),launchDate,launchYear:/^\d{4}/.test(launchDate)?+launchDate.slice(0,4):null,sft:num(get('sft')),format:txt(get('format')),division:txt(get('division')),district:txt(get('district')),area:txt(get('area')),pnpStatus:txt(get('pnpStatus')),status:txt(get('status')),locationType:txt(get('locationType')),cityType:txt(get('cityType')),density:txt(get('density')),incomeLevel:txt(get('incomeLevel')),floorType:txt(get('floorType')),layoutShape:txt(get('layoutShape'))};
+   record._cells=columns.map(column=>txt(raw?.[column.label]));
+   map.set(code,record);
+  }
+  const publishedRows=[...map.values()].sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+  if(!publishedRows.length)return null;
+  const savedAt=payload?.meta?.generatedAt||new Date().toISOString();
+  return{version:5,sourceKind:'published-static',fileName:payload?.meta?.sourceWorkbook||'Published Zone Distribution snapshot',fileSignature:`published|${payload?.meta?.sourceWorkbook||''}|${payload?.meta?.rowCount||publishedRows.length}|${savedAt}`,sheetName:payload?.meta?.sourceWorksheet||'',columns,rows:publishedRows,savedAt,diagnostics:{blankCodes:Number(payload?.meta?.blankCodes||0),duplicateCodes:Number(payload?.meta?.duplicateCodes||0)}};
+ }catch(error){console.warn('Published Zone snapshot unavailable:',error);return null}
+}
+async function publishZoneShared(candidate){if(!candidate?.rows?.length||candidate.sourceKind!=='gdrive')return;try{const cloud=await cloudModulePromise;const result=await cloud?.publishZoneSnapshot?.(candidate);if(result?.published&&snapshot===candidate)setStatus('live','Live from Google Drive. Shared snapshot updated for other PCs.')}catch(error){console.warn('Zone shared snapshot publish failed:',error)}}
 function parseDate(v){if(v instanceof Date&&!isNaN(v))return v.toISOString().slice(0,10);if(typeof v==='number'&&XLSX?.SSF?.parse_date_code){const d=XLSX.SSF.parse_date_code(v);if(d?.y)return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}const s=txt(v);if(!s)return'';let m=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);if(m)return `${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;m=s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);if(m)return `${m[3]}-${String(+m[2]).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;return s;}
 function num(v){const n=Number(txt(v).replace(/,/g,''));return Number.isFinite(n)?n:null;}
 function headers(r){return(r||[]).map((v,i)=>({index:i,label:txt(v),key:k(v)})).filter(x=>x.label)}
@@ -166,8 +190,8 @@ async function parseWorkbook(file){
 function scoreFile(f){const n=f.name.toLowerCase();if(!/\.(xlsx|xlsm|xlsb|xls)$/i.test(n)||n.startsWith('~$'))return 99;if(/zone[ _-]*distribution.*location[ _-]*type/.test(n))return 0;if(/zone[ _-]*distribution/.test(n))return 1;return 99;}
 async function folderFiles(h){const out=[];for await(const[name,e]of h.entries()){if(e.kind==='file'){const f=await e.getFile();if(scoreFile(f)<99)out.push(f)}}return out.sort((a,b)=>scoreFile(a)-scoreFile(b)||b.lastModified-a.lastModified||a.name.localeCompare(b.name));}
 const sig=f=>`${f.name}|${f.size}|${f.lastModified}`;
-function sourceLabel(kind=sourceKind){return kind==='gdrive'?'GOOGLE DRIVE':kind==='shared-cloud'?'SHARED CLOUD':kind==='drive'?'GOOGLE DRIVE SYNC':'PC FOLDER'}
-function sourceDescription(kind){return kind==='gdrive'?'Google Drive cloud folder':kind==='shared-cloud'?'Shared cloud snapshot':kind==='drive'?'Google Drive synced folder':'PC raw-data folder'}
+function sourceLabel(kind=sourceKind){return kind==='gdrive'?'GOOGLE DRIVE':kind==='shared-cloud'?'SHARED CLOUD':kind==='published-static'?'PUBLISHED SNAPSHOT':kind==='drive'?'GOOGLE DRIVE SYNC':'PC FOLDER'}
+function sourceDescription(kind){return kind==='gdrive'?'Google Drive cloud folder':kind==='shared-cloud'?'Shared cloud snapshot':kind==='published-static'?'Published dashboard snapshot':kind==='drive'?'Google Drive synced folder':'PC raw-data folder'}
 function formatPublicSnapshotTime(value){const parsed=value?new Date(value):null;if(!parsed||Number.isNaN(parsed.getTime()))return'not published yet';return parsed.toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Dhaka'})}
 function setStatus(kind,msg){
  $('sourceStatus').textContent=kind==='live'?`${sourceLabel()} — LIVE`:kind==='retained'?(snapshot?.sourceKind==='shared-cloud'?'SHARED SNAPSHOT':'RETAINED SNAPSHOT'):kind==='reading'?`READING ${sourceLabel()}`:kind==='error'?`${sourceLabel()} ERROR`:'SOURCE REQUIRED';
@@ -258,19 +282,18 @@ async function init(){
  applyTheme(localStorage.getItem('zone-theme')||'dark');$('themeToggle').onclick=()=>applyTheme(document.documentElement.dataset.theme==='light'?'dark':'light');
  $('driveSetup').onclick=()=>openDriveSetup(true);$('allowFolder').onclick=()=>connectGoogleDrive({pickFolder:false});
  $('driveSetupCancel').onclick=closeDriveSetup;$('driveSetupClear').onclick=clearDriveSetup;$('driveSetupSave').onclick=()=>{if(saveDriveSetup())setTimeout(()=>connectGoogleDrive({pickFolder:true}),0)};$('driveSetupModal').onclick=e=>{if(e.target===$('driveSetupModal'))closeDriveSetup()};
- $('fallback').onchange=e=>{const f=e.target.files;e.target.value='';fallback(f,'pc')};
+ const fallbackInput=$('fallback');if(fallbackInput)fallbackInput.onchange=e=>{const f=e.target.files;e.target.value='';fallback(f,'pc')};
  $('outletSearch').oninput=e=>{query=e.target.value;renderTable(selected())};$('rowLimit').value=String(tableLimit);$('rowLimit').onchange=e=>{tableLimit=e.target.value==='all'?'all':Number(e.target.value);localStorage.setItem('zone-table-limit',String(tableLimit));renderTable(selected())};
- const [savedCurrent,savedOld,sharedSnapshot,savedHandle]=await Promise.all([dbGet(SNAPSHOT_STORE,SNAPSHOT_KEY),dbGet(SNAPSHOT_STORE,OLD_SNAPSHOT_KEY),readZoneShared(),dbGet(HANDLE_STORE,HANDLE_KEY)]);
+ const [savedCurrent,savedOld,sharedSnapshot,publishedSnapshot,savedHandle]=await Promise.all([dbGet(SNAPSHOT_STORE,SNAPSHOT_KEY),dbGet(SNAPSHOT_STORE,OLD_SNAPSHOT_KEY),readZoneShared(),readPublishedZone(),dbGet(HANDLE_STORE,HANDLE_KEY)]);
  const localSnapshot=savedCurrent||savedOld;folderHandle=savedHandle;
- if(localSnapshot?.rows?.length&&sharedSnapshot?.rows?.length&&localSnapshot.fileSignature===sharedSnapshot.fileSignature)snapshot=localSnapshot;
- else if(sharedSnapshot?.rows?.length&&(!localSnapshot?.rows?.length||snapshotTime(sharedSnapshot)>snapshotTime(localSnapshot)))snapshot=sharedSnapshot;
- else snapshot=localSnapshot?.rows?.length?localSnapshot:sharedSnapshot;
+ const candidates=[localSnapshot,sharedSnapshot,publishedSnapshot].filter(candidate=>candidate?.rows?.length);
+ snapshot=candidates.sort((a,b)=>snapshotTime(b)-snapshotTime(a)||({gdrive:3,'shared-cloud':2,'published-static':1}[b.sourceKind]||0)-({gdrive:3,'shared-cloud':2,'published-static':1}[a.sourceKind]||0))[0]||null;
  if(snapshot?.rows?.length){
   rows=snapshot.rows;lastSig=snapshot.fileSignature||'';sourceKind=snapshot.sourceKind||'gdrive';
-  if(snapshot.sourceKind==='shared-cloud')await dbPut(SNAPSHOT_STORE,SNAPSHOT_KEY,snapshot);else void publishZoneShared(snapshot);
+  if(snapshot.sourceKind==='shared-cloud')await dbPut(SNAPSHOT_STORE,SNAPSHOT_KEY,snapshot);else if(snapshot.sourceKind==='gdrive')void publishZoneShared(snapshot);
   if(snapshot.driveFolderId&&!driveFolderId){driveFolderId=snapshot.driveFolderId;driveFolderName=snapshot.driveFolderName||'';localStorage.setItem('zone-gdrive-folder-id',driveFolderId);localStorage.setItem('zone-gdrive-folder-name',driveFolderName)}
   buildFilters();render();
-  setStatus('retained',snapshot.sourceKind==='shared-cloud'?`Showing the latest shared cloud snapshot from ${new Date(snapshot.savedAt).toLocaleString()}.`:'Showing the retained data. Click Reconnect Google Drive to check the remembered cloud folder.');
+  setStatus('retained',snapshot.sourceKind==='shared-cloud'?`Showing the latest shared cloud snapshot from ${new Date(snapshot.savedAt).toLocaleString()}.`:snapshot.sourceKind==='published-static'?`Showing the latest published dashboard snapshot from ${new Date(snapshot.savedAt).toLocaleString()}.`:'Showing the retained data. Click Reconnect Google Drive to check the remembered cloud folder.');
  }else{buildFilters();render();setStatus('idle','Click Drive setup to connect Google Drive and select a cloud folder.')}
  await refreshGoogleDrive({silent:true})
  document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(driveToken&&Date.now()<driveTokenExpiresAt-30000)refreshGoogleDrive({silent:true})}});
