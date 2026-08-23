@@ -48,8 +48,6 @@ const state = {
   page:1,
   pageSize:100,
   visibleColumns:new Set(COLUMNS.map(c=>c[0])),
-  detailFilter:null,
-  personnelMode:null,
 };
 
 const $ = id => document.getElementById(id);
@@ -63,285 +61,65 @@ function formatDate(value){
   return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
 function normalize(value){ return String(value ?? "").trim().toLocaleLowerCase(); }
-function uniqueSortedFromRows(rows,key){
-  return [...new Set(rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
+function uniqueSorted(key){
+  return [...new Set(state.rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
     .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"}));
 }
-
-function rowMatchesSearch(row){
-  const search=normalize(state.search);
-  if(!search) return true;
-  for(const [key] of COLUMNS){
-    if(normalize(row[key]).includes(search)) return true;
-  }
-  return false;
-}
-
-function rowMatchesFilters(row,excludeKey=""){
-  for(const [key,value] of Object.entries(state.filters)){
-    if(!value || key===excludeKey) continue;
-    if(String(row[key] ?? "") !== value) return false;
-  }
-  return true;
-}
-
-function rowsForFacet(key){
-  return state.rows.filter(row=>rowMatchesSearch(row) && rowMatchesFilters(row,key));
-}
-
-function populateSelect(select,rows=null){
+function populateSelect(select){
   const key=select.dataset.filter;
   const current=state.filters[key] || "";
-  const sourceRows=rows || state.rows;
-  const opts=uniqueSortedFromRows(sourceRows,key);
+  const opts=uniqueSorted(key);
   select.innerHTML=`<option value="">All</option>`+opts.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  if(current && opts.includes(current)) select.value=current;
-  else select.value="";
+  if(opts.includes(current)) select.value=current;
 }
-
-function syncCascadingFilters(){
-  const selects=[...document.querySelectorAll("select[data-filter]")];
-
-  // If a newly selected filter makes another active filter impossible,
-  // clear only the impossible filter. Repeat until the combination is valid.
-  for(let pass=0;pass<selects.length;pass++){
-    let changed=false;
-    for(const select of selects){
-      const key=select.dataset.filter;
-      const current=state.filters[key] || "";
-      if(!current) continue;
-      const allowed=uniqueSortedFromRows(rowsForFacet(key),key);
-      if(!allowed.includes(current)){
-        state.filters[key]="";
-        changed=true;
-      }
-    }
-    if(!changed) break;
-  }
-
-  // Faceted/cascading dropdowns:
-  // each dropdown shows only values compatible with all OTHER active filters.
-  for(const select of selects){
-    populateSelect(select,rowsForFacet(select.dataset.filter));
-  }
-}
-
 function initFilters(){
-  const selects=[...document.querySelectorAll("select[data-filter]")];
-  selects.forEach(select=>{
+  document.querySelectorAll("select[data-filter]").forEach(select=>{
     populateSelect(select);
     select.addEventListener("change",()=>{
       state.filters[select.dataset.filter]=select.value;
       state.page=1;
-      clearDetailFilter(false);
-      syncCascadingFilters();
-      applyFilters(false);
+      applyFilters();
     });
   });
-
   $("global-search").addEventListener("input",e=>{
     state.search=e.target.value;
     state.page=1;
-    clearDetailFilter(false);
-    // Search affects results immediately; dropdown selections are preserved.
-    applyFilters(false);
+    applyFilters();
   });
-
   $("reset-filters").addEventListener("click",()=>{
     state.search="";
     state.filters={};
+    state.sortKeys=null;
     $("global-search").value="";
+    document.querySelectorAll("select[data-filter]").forEach(s=>{s.value="";});
     state.page=1;
-    clearDetailFilter(false);
-    syncCascadingFilters();
-    applyFilters(false);
+    applyFilters();
   });
-
   $("advanced-toggle").addEventListener("click",()=>{
     $("advanced-filters").classList.toggle("hidden");
     $("advanced-toggle").textContent=$("advanced-filters").classList.contains("hidden")?"More filters":"Fewer filters";
   });
 }
 
-function applyFilters(syncFacets=true){
-  if(syncFacets) syncCascadingFilters();
-
+function applyFilters(){
+  const search=normalize(state.search);
+  const active=Object.entries(state.filters).filter(([,v])=>v);
   state.filtered=state.rows.filter(row=>{
-    if(!rowMatchesSearch(row)) return false;
-    return rowMatchesFilters(row);
+    for(const [key,value] of active){
+      if(String(row[key] ?? "") !== value) return false;
+    }
+    if(search){
+      let found=false;
+      for(const [key] of COLUMNS){
+        if(normalize(row[key]).includes(search)){found=true;break;}
+      }
+      if(!found) return false;
+    }
+    return true;
   });
-
   sortRows();
   renderAll();
 }
-
-function clearDetailFilter(render=true){
-  state.detailFilter=null;
-  state.personnelMode=null;
-  state.page=1;
-  renderPersonnelDirectories();
-  if(render) renderTable();
-}
-
-function detailFilteredRows(){
-  if(!state.detailFilter) return state.filtered;
-  const f=state.detailFilter;
-
-  if(f.mode==="all") return state.filtered;
-  if(f.mode==="nonblank"){
-    return state.filtered.filter(row=>String(row[f.key] ?? "").trim()!=="");
-  }
-  if(f.mode==="blank"){
-    return state.filtered.filter(row=>String(row[f.key] ?? "").trim()==="");
-  }
-
-  if(f.mode==="zonal-only"){
-    return zonalRowsExcludingRhoNames(state.filtered);
-  }
-
-  const wanted=String(f.value ?? "").trim();
-  return state.filtered.filter(row=>String(row[f.key] ?? "").trim()===wanted);
-}
-
-function renderDetailFilterChip(){
-  const chip=$("detail-filter-chip"), text=$("detail-filter-text");
-  if(!chip || !text) return;
-  if(!state.detailFilter){
-    chip.classList.add("hidden");
-    text.textContent="";
-    return;
-  }
-
-  const f=state.detailFilter;
-  const actual=detailFilteredRows().length;
-  const base=f.description || (
-    f.mode==="all" ? (f.label || "Current view") :
-    f.mode==="nonblank" ? `${f.label || f.key}: mapped outlets` :
-    f.mode==="blank" ? `${f.label || f.key}: blank` :
-    `${f.label || f.key}: ${f.value}`
-  );
-  text.textContent=`${base} · ${numberFmt.format(actual)} outlet(s)`;
-  chip.classList.remove("hidden");
-}
-
-function scrollToDetailView(){
-  const target=$("detail-view");
-  if(target) target.scrollIntoView({behavior:"smooth",block:"start"});
-}
-
-function personnelNameKey(value){
-  return String(value ?? "").trim().replace(/\s+/g," ").toLowerCase();
-}
-
-function rhoNameSet(rows){
-  return new Set(
-    rows
-      .map(row=>personnelNameKey(row["Regional Head HR Name"]))
-      .filter(Boolean)
-  );
-}
-
-function zonalRowsExcludingRhoNames(rows){
-  const rhoNames=rhoNameSet(rows);
-  return rows.filter(row=>{
-    const zonalName=personnelNameKey(row["Zonal HR Name"]);
-    return zonalName && !rhoNames.has(zonalName);
-  });
-}
-
-function formatMobile(value){
-  const text=String(value ?? "").trim();
-  if(!text) return "";
-  const digits=text.replace(/\D/g,"");
-  if(digits.length===10 && digits.startsWith("1")) return `0${digits}`;
-  if(digits.length===13 && digits.startsWith("880")) return `+${digits}`;
-  return text;
-}
-
-function uniquePersonnel(rows,mode){
-  const isRho=mode==="rho";
-  const nameKey=isRho ? "Regional Head HR Name" : "Zonal HR Name";
-  const idKey=isRho ? "Regional Head ID" : "Zonal ID";
-  const contactKey=isRho ? "Regional Head Contact" : "Zonal Contact";
-  const map=new Map();
-  const rhoNames=isRho ? new Set() : rhoNameSet(rows);
-
-  rows.forEach(row=>{
-    const name=String(row[nameKey] ?? "").trim();
-    const id=String(row[idKey] ?? "").trim();
-    const mobile=formatMobile(row[contactKey]);
-    if(!name && !id && !mobile) return;
-
-    // If the same person's name appears in RHO and Zonal data,
-    // show that person only in the RHO section.
-    if(!isRho && rhoNames.has(personnelNameKey(name))) return;
-    const key=`${name}|${id}|${mobile}`;
-    if(!map.has(key)) map.set(key,{name,id,mobile});
-  });
-
-  return [...map.values()].sort((a,b)=>
-    a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:"base"}) ||
-    a.id.localeCompare(b.id,undefined,{numeric:true,sensitivity:"base"})
-  );
-}
-
-function renderPersonnelDirectories(){
-  const rhoCard=$("rho-directory"), zonalCard=$("zonal-directory");
-  if(!rhoCard || !zonalCard) return;
-
-  const rhoPeople=uniquePersonnel(state.filtered,"rho");
-  const zonalPeople=uniquePersonnel(state.filtered,"zonal");
-
-  $("rho-directory-summary").textContent=
-    `${numberFmt.format(rhoPeople.length)} Regional Head(s) in the current filtered view.`;
-  $("rho-directory-body").innerHTML=rhoPeople.length
-    ? rhoPeople.map(p=>`<tr>
-        <td>${esc(p.name)}</td>
-        <td>${esc(p.id)}</td>
-        <td>${esc(p.mobile)}</td>
-      </tr>`).join("")
-    : `<tr><td colspan="3"><div class="empty-state">No Regional Head records found.</div></td></tr>`;
-
-  $("zonal-directory-summary").textContent=
-    `${numberFmt.format(zonalPeople.length)} Zonal(s) in the current filtered view.`;
-  $("zonal-directory-body").innerHTML=zonalPeople.length
-    ? zonalPeople.map(p=>`<tr>
-        <td>${esc(p.name)}</td>
-        <td>${esc(p.id)}</td>
-        <td>${esc(p.mobile)}</td>
-      </tr>`).join("")
-    : `<tr><td colspan="3"><div class="empty-state">No Zonal records found.</div></td></tr>`;
-
-  // Always keep both windows visible at the bottom of the dashboard.
-  rhoCard.classList.remove("hidden");
-  zonalCard.classList.remove("hidden");
-}
-
-
-function setDetailFilter(key,value,label,description="",mode="value",personnel=""){
-  state.detailFilter={key,value,label,description,mode};
-  state.personnelMode=personnel || null;
-  state.page=1;
-  renderTable();
-  renderPersonnelDirectories();
-  scrollToDetailView();
-}
-
-function attachDrilldownHandlers(target){
-  target.querySelectorAll("[data-drill-key]").forEach(btn=>{
-    btn.addEventListener("click",()=>{
-      setDetailFilter(
-        btn.dataset.drillKey || "",
-        btn.dataset.drillValue || "",
-        btn.dataset.drillLabel || btn.dataset.drillKey || "Current view",
-        btn.dataset.drillDescription || "",
-        btn.dataset.drillMode || "value",
-        btn.dataset.personnel || ""
-      );
-    });
-  });
-}
-
 
 function compareValues(a,b,type){
   if(type==="number"){
@@ -354,15 +132,38 @@ function compareValues(a,b,type){
   }
   return String(a??"").localeCompare(String(b??""),undefined,{numeric:true,sensitivity:"base"});
 }
-function sortRows(){
-  const def=COLUMNS.find(c=>c[0]===state.sortKey) || COLUMNS[0];
-  const type=def[2];
-  const direction=state.sortDirection==="asc"?1:-1;
-  state.filtered.sort((a,b)=>compareValues(a[state.sortKey],b[state.sortKey],type)*direction);
+function sortChain(){
+  // state.sortKeys is the multi-level chain; the older single-key fields are
+  // kept in step so the header arrows and any other reader keep working.
+  if(!Array.isArray(state.sortKeys) || !state.sortKeys.length){
+    state.sortKeys=[{key:state.sortKey||COLUMNS[0][0],dir:state.sortDirection||"asc"}];
+  }
+  return state.sortKeys;
 }
-function setSort(key){
-  if(state.sortKey===key) state.sortDirection=state.sortDirection==="asc"?"desc":"asc";
-  else { state.sortKey=key; state.sortDirection="asc"; }
+function sortRows(){
+  const chain=sortChain();
+  state.filtered.sort((a,b)=>{
+    for(const {key,dir} of chain){
+      const def=COLUMNS.find(c=>c[0]===key)||COLUMNS[0];
+      const cmp=compareValues(a[key],b[key],def[2])*(dir==="asc"?1:-1);
+      if(cmp) return cmp;
+    }
+    return 0;
+  });
+}
+function setSort(key,additive=false){
+  const chain=sortChain();
+  const at=chain.findIndex(c=>c.key===key);
+  if(additive){
+    if(at>=0) chain[at].dir=chain[at].dir==="asc"?"desc":"asc";
+    else chain.push({key,dir:"asc"});
+  } else if(at===0 && chain.length===1){
+    chain[0].dir=chain[0].dir==="asc"?"desc":"asc";
+  } else {
+    state.sortKeys=[{key,dir:"asc"}];
+  }
+  const first=sortChain()[0];
+  state.sortKey=first.key; state.sortDirection=first.dir;
   state.page=1;
   sortRows();
   renderTable();
@@ -384,55 +185,20 @@ function renderKpis(){
   const r=state.filtered;
   const totalSft=sum(r,"SFT");
   const avgSft=r.length?totalSft/r.length:0;
-  const pnp=countValue(r,"PNP Non PNP status","PNP");
-  const nonPnp=countValue(r,"PNP Non PNP status","Non-PNP");
-  const own=countValue(r,"Status","OWN");
-  const fr=countValue(r,"Status","FR");
-  const rhoQty=countDistinct(r,"Regional Head HR Name");
-  const zonalQty=uniquePersonnel(r,"zonal").length;
-  const districts=countDistinct(r,"District");
-
   const defs=[
-    {label:"Visible Outlets",value:numberFmt.format(r.length),note:`${numberFmt.format(state.rows.length)} total source rows`,cls:"accent",
-      drill:{key:"",value:"",label:"Visible Outlets",mode:"all",description:"Visible outlets in current filtered view"}},
-    {label:"Total SFT",value:numberFmt.format(Math.round(totalSft)),note:"filtered network area",cls:"",
-      drill:{key:"",value:"",label:"Total SFT",mode:"all",description:"Outlets contributing to Total SFT"}},
-    {label:"Average SFT",value:numberFmt.format(Math.round(avgSft)),note:"per visible outlet",cls:"",
-      drill:{key:"",value:"",label:"Average SFT",mode:"all",description:"Outlets contributing to Average SFT"}},
-    {label:"PNP",value:numberFmt.format(pnp),note:"visible outlets",cls:"accent",
-      drill:{key:"PNP Non PNP status",value:"PNP",label:"PNP",mode:"value",description:"PNP outlets"}},
-    {label:"Non-PNP",value:numberFmt.format(nonPnp),note:"visible outlets",cls:"",
-      drill:{key:"PNP Non PNP status",value:"Non-PNP",label:"Non-PNP",mode:"value",description:"Non-PNP outlets"}},
-    {label:"OWN",value:numberFmt.format(own),note:"visible outlets",cls:"accent",
-      drill:{key:"Status",value:"OWN",label:"OWN",mode:"value",description:"OWN outlets"}},
-    {label:"FR",value:numberFmt.format(fr),note:"visible outlets",cls:"",
-      drill:{key:"Status",value:"FR",label:"FR",mode:"value",description:"FR outlets"}},
-    {label:"RHO Qty",value:numberFmt.format(rhoQty),note:"regional heads in current view",cls:"accent",
-      drill:{key:"Regional Head HR Name",value:"",label:"RHO Qty",mode:"nonblank",
-        description:`Outlets under ${numberFmt.format(rhoQty)} RHO(s)`,personnel:"rho"}},
-    {label:"Zonal Qty",value:numberFmt.format(zonalQty),note:"zonals in current view",cls:"",
-      drill:{key:"Zonal HR Name",value:"",label:"Zonal Qty",mode:"zonal-only",
-        description:`Outlets under ${numberFmt.format(zonalQty)} Zonal(s) excluding names already listed as RHO`,personnel:"zonal"}},
-    {label:"Districts",value:numberFmt.format(districts),note:"represented in current view",cls:"",
-      drill:{key:"",value:"",label:"Districts",mode:"all",description:`Outlets across ${numberFmt.format(districts)} district(s)`}},
+    ["Visible Outlets",numberFmt.format(r.length),`${numberFmt.format(state.rows.length)} total source rows`,"accent"],
+    ["Total SFT",numberFmt.format(Math.round(totalSft)),"filtered network area",""],
+    ["Average SFT",numberFmt.format(Math.round(avgSft)),"per visible outlet",""],
+    ["PNP",numberFmt.format(countValue(r,"PNP Non PNP status","PNP")),"visible outlets","accent"],
+    ["Non-PNP",numberFmt.format(countValue(r,"PNP Non PNP status","Non-PNP")),"visible outlets",""],
+    ["OWN",numberFmt.format(countValue(r,"Status","OWN")),"visible outlets","accent"],
+    ["FR",numberFmt.format(countValue(r,"Status","FR")),"visible outlets",""],
+    ["Districts",numberFmt.format(countDistinct(r,"District")),"represented in current view",""],
   ];
-
-  $("kpi-grid").innerHTML=defs.map(d=>`<article class="kpi ${d.cls}">
-    <div class="kpi-label">${esc(d.label)}</div>
-    <button type="button" class="kpi-value kpi-drill-value"
-      data-drill-key="${esc(d.drill.key)}"
-      data-drill-value="${esc(d.drill.value)}"
-      data-drill-label="${esc(d.drill.label)}"
-      data-drill-mode="${esc(d.drill.mode)}"
-      data-drill-description="${esc(d.drill.description)}"
-      ${d.drill.personnel?`data-personnel="${esc(d.drill.personnel)}"`:""}
-      title="Show related details">${esc(d.value)}</button>
-    <div class="kpi-note">${esc(d.note)}</div>
-  </article>`).join("");
-
-  attachDrilldownHandlers($("kpi-grid"));
+  $("kpi-grid").innerHTML=defs.map(([label,value,note,cls])=>
+    `<article class="kpi ${cls}"><div class="kpi-label">${esc(label)}</div><div class="kpi-value">${esc(value)}</div><div class="kpi-note">${esc(note)}</div></article>`
+  ).join("");
 }
-
 
 function frequencies(rows,key){
   const map=new Map();
@@ -445,7 +211,6 @@ function frequencies(rows,key){
 function renderDonut(targetId,key){
   const target=$(targetId), entries=frequencies(state.filtered,key);
   if(!state.filtered.length){ target.innerHTML=`<div class="empty-state">No matching rows</div>`; return; }
-
   const total=entries.reduce((a,b)=>a+b[1],0);
   let angle=0, stops=[];
   entries.forEach(([label,value],i)=>{
@@ -453,53 +218,19 @@ function renderDonut(targetId,key){
     stops.push(`${COLORS[i%COLORS.length]} ${angle}% ${angle+pct}%`);
     angle+=pct;
   });
-
-  const legend=entries.slice(0,8).map(([label,value],i)=>{
-    const isBlank=label==="(blank)";
-    return `<div class="legend-row">
-      <span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>
-      <span class="legend-label" title="${esc(label)}">${esc(label)}</span>
-      <button type="button" class="legend-value drill-count-btn"
-        data-drill-key="${esc(key)}"
-        data-drill-value="${esc(isBlank?"":label)}"
-        data-drill-label="${esc(key)}"
-        data-drill-mode="${isBlank?"blank":"value"}"
-        data-drill-description="${esc(`${key}: ${label}`)}"
-        title="Show exactly these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
-    </div>`;
-  }).join("");
-
-  target.innerHTML=`<div class="donut-wrap">
-    <div class="donut" style="background:conic-gradient(${stops.join(",")})">
-      <div class="donut-center">${numberFmt.format(total)}</div>
-    </div>
-    <div class="legend">${legend}</div>
-  </div>`;
-  attachDrilldownHandlers(target);
+  const legend=entries.slice(0,8).map(([label,value],i)=>
+    `<div class="legend-row"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span><span class="legend-label" title="${esc(label)}">${esc(label)}</span><span class="legend-value">${numberFmt.format(value)}</span></div>`
+  ).join("");
+  target.innerHTML=`<div class="donut-wrap"><div class="donut" style="background:conic-gradient(${stops.join(",")})"><div class="donut-center">${numberFmt.format(total)}</div></div><div class="legend">${legend}</div></div>`;
 }
-
 function renderBars(targetId,key,limit=7){
   const target=$(targetId), entries=frequencies(state.filtered,key).slice(0,limit);
   if(!entries.length){ target.innerHTML=`<div class="empty-state">No matching rows</div>`; return; }
-
   const max=entries[0][1] || 1;
-  target.innerHTML=`<div class="bars">${entries.map(([label,value])=>{
-    const isBlank=label==="(blank)";
-    return `<div class="bar-row">
-      <div class="bar-label" title="${esc(label)}">${esc(label)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,value/max*100)}%"></div></div>
-      <button type="button" class="bar-value drill-count-btn"
-        data-drill-key="${esc(key)}"
-        data-drill-value="${esc(isBlank?"":label)}"
-        data-drill-label="${esc(key)}"
-        data-drill-mode="${isBlank?"blank":"value"}"
-        data-drill-description="${esc(`${key}: ${label}`)}"
-        title="Show exactly these ${numberFmt.format(value)} outlet(s) in Detail View">${numberFmt.format(value)}</button>
-    </div>`;
-  }).join("")}</div>`;
-  attachDrilldownHandlers(target);
+  target.innerHTML=`<div class="bars">${entries.map(([label,value])=>
+    `<div class="bar-row"><div class="bar-label" title="${esc(label)}">${esc(label)}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,value/max*100)}%"></div></div><div class="bar-value">${numberFmt.format(value)}</div></div>`
+  ).join("")}</div>`;
 }
-
 function renderCharts(){
   renderDonut("chart-format","Format");
   renderDonut("chart-status","Status");
@@ -519,9 +250,13 @@ function renderHead(){
   $("table-head").innerHTML=columns.map(([key,label])=>{
     const sorted=state.sortKey===key;
     const mark=sorted?(state.sortDirection==="asc"?"▲":"▼"):"↕";
-    return `<th data-key="${esc(key)}" class="${columnClass(key)} ${sorted?"sorted":""}">${esc(label)} <span class="sort-mark">${mark}</span></th>`;
+    const chain=sortChain();
+    const at=chain.findIndex(c=>c.key===key);
+    const rank=at>=0&&chain.length>1?`<sup class="sort-rank">${at+1}</sup>`:"";
+    const dirMark=at>=0?(chain[at].dir==="asc"?"▲":"▼"):mark;
+    return `<th data-key="${esc(key)}" class="${columnClass(key)} ${at>=0?"sorted":""}" title="Click to sort · Shift-click to add a level">${esc(label)} <span class="sort-mark">${dirMark}${rank}</span></th>`;
   }).join("");
-  $("table-head").querySelectorAll("th").forEach(th=>th.addEventListener("click",()=>setSort(th.dataset.key)));
+  $("table-head").querySelectorAll("th").forEach(th=>th.addEventListener("click",ev=>setSort(th.dataset.key,ev.shiftKey)));
 }
 function renderCell(row,col){
   const [key,,type]=col;
@@ -543,10 +278,9 @@ function renderCell(row,col){
   return `<td class="${cls}"${title}>${esc(display)}</td>`;
 }
 function pageRows(){
-  const rows=detailFilteredRows();
-  if(state.pageSize==="all") return rows;
+  if(state.pageSize==="all") return state.filtered;
   const start=(state.page-1)*state.pageSize;
-  return rows.slice(start,start+state.pageSize);
+  return state.filtered.slice(start,start+state.pageSize);
 }
 function renderTable(){
   renderHead();
@@ -554,16 +288,14 @@ function renderTable(){
   const rows=pageRows();
   $("table-body").innerHTML=rows.length
     ? rows.map(row=>`<tr>${columns.map(col=>renderCell(row,col)).join("")}</tr>`).join("")
-    : `<tr><td colspan="${Math.max(1,columns.length)}"><div class="empty-state">No outlet rows match the selected detail link.</div></td></tr>`;
+    : `<tr><td colspan="${Math.max(1,columns.length)}"><div class="empty-state">No rows match the current filters.</div></td></tr>`;
 
-  const detailRows=detailFilteredRows();
-  const total=detailRows.length;
+  const total=state.filtered.length;
   const pageCount=state.pageSize==="all"?1:Math.max(1,Math.ceil(total/state.pageSize));
   if(state.page>pageCount) state.page=pageCount;
   const from=total===0?0:(state.pageSize==="all"?1:(state.page-1)*state.pageSize+1);
   const to=state.pageSize==="all"?total:Math.min(total,state.page*state.pageSize);
-  $("table-summary").textContent=`${numberFmt.format(total)} detail outlet(s) · showing ${numberFmt.format(from)}–${numberFmt.format(to)} · sorted by ${state.sortKey} ${state.sortDirection==="asc"?"ascending":"descending"}`;
-  renderDetailFilterChip();
+  $("table-summary").textContent=`${numberFmt.format(total)} visible outlets · showing ${numberFmt.format(from)}–${numberFmt.format(to)} · sorted by ${state.sortKey} ${state.sortDirection==="asc"?"ascending":"descending"}`;
   $("page-info").textContent=state.pageSize==="all"?`All ${numberFmt.format(total)} rows`:`Page ${state.page} of ${pageCount}`;
   $("prev-page").disabled=state.page<=1 || state.pageSize==="all";
   $("next-page").disabled=state.page>=pageCount || state.pageSize==="all";
@@ -572,7 +304,6 @@ function renderAll(){
   renderKpis();
   renderCharts();
   renderTable();
-  renderPersonnelDirectories();
 }
 
 function initPagination(){
@@ -585,7 +316,7 @@ function initPagination(){
   $("prev-page").addEventListener("click",()=>{if(state.page>1){state.page--;renderTable();}});
   $("next-page").addEventListener("click",()=>{
     if(state.pageSize==="all") return;
-    const pages=Math.ceil(detailFilteredRows().length/state.pageSize);
+    const pages=Math.ceil(state.filtered.length/state.pageSize);
     if(state.page<pages){state.page++;renderTable();}
   });
 }
@@ -621,7 +352,7 @@ function csvCell(value){
 function downloadCsv(){
   const cols=COLUMNS;
   const lines=[cols.map(c=>csvCell(c[1])).join(",")];
-  detailFilteredRows().forEach(r=>lines.push(cols.map(c=>csvCell(r[c[0]])).join(",")));
+  state.filtered.forEach(r=>lines.push(cols.map(c=>csvCell(r[c[0]])).join(",")));
   const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
@@ -663,14 +394,8 @@ async function init(){
     initFilters();
     initPagination();
     initColumnChooser();
-    $("clear-detail-filter").addEventListener("click",()=>clearDetailFilter(true));
     $("download-csv").addEventListener("click",downloadCsv);
     applyFilters();
-
-    // Exposed so local-source-init.js can swap in rows read from a folder on
-    // this computer and re-render, without duplicating any of the logic above.
-    window.__dashboardState = state;
-    window.__dashboardRefresh = () => { initFilters(); applyFilters(); };
   }catch(err){
     document.body.innerHTML=`<div style="padding:40px;font-family:Segoe UI,Arial"><h2>Dashboard could not load</h2><p>${esc(err.message)}</p><p>Run <code>python scripts/build.py</code> and deploy the generated <code>site</code> folder.</p></div>`;
   }

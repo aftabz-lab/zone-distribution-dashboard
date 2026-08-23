@@ -451,237 +451,33 @@ select option:checked{
   color:#ffffff !important;
 }
 
-
-/* ============================================================
-   v9 — Sticky filter command center + cascading-filter polish
-   ============================================================ */
-
-/* Keep the complete filter/control section visible while the page scrolls. */
-.filter-panel{
-  position: sticky !important;
-  top: 8px !important;
-  z-index: 60 !important;
-  max-height: calc(100vh - 16px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  box-shadow: 0 14px 34px rgba(0,0,0,.48) !important;
+/* Searchable filter dropdowns + panel search (filter-enhance.js). */
+.combo { position: relative; }
+.combo-hidden { display: none !important; }
+.combo-input {
+  width: 100%; height: 39px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface-soft); color: var(--ink); font: inherit; outline: none;
 }
-
-/* Prevent sticky panel from visually merging into content underneath. */
-.filter-panel{
-  outline: 1px solid rgba(76,111,130,.20);
+.combo-input::placeholder { color: #8fa3b8; }
+.combo-input:focus { border-color: #ff7777; box-shadow: 0 0 0 3px rgba(241,75,75,.16); }
+.combo-input.has-value { font-weight: 700; }
+.combo-list {
+  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto;
+  padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  box-shadow: 0 14px 34px rgba(0,0,0,.45);
 }
-
-/* The panel's own scrollbar stays dark if More filters is expanded. */
-.filter-panel{
-  scrollbar-color: #415966 #0b151c;
+.combo-opt {
+  display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; border-radius: 7px;
+  background: none; color: var(--ink); font: inherit; cursor: pointer;
 }
-.filter-panel::-webkit-scrollbar{
-  width: 9px;
+.combo-opt:hover { background: var(--surface-soft); }
+.combo-opt.on { background: rgba(241,75,75,.16); font-weight: 700; }
+.combo-empty { margin: 0; padding: 8px 10px; color: var(--muted); font-size: 12px; }
+.panel-search { display: grid; gap: 5px; min-width: 220px; grid-column: 1 / -1; margin-bottom: 10px; }
+.panel-search label { color: #bdc8d7; font-size: 11px; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
+.panel-search input {
+  width: 100%; height: 39px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface-soft); color: var(--ink); font: inherit; outline: none;
 }
-.filter-panel::-webkit-scrollbar-track{
-  background:#0b151c;
-}
-.filter-panel::-webkit-scrollbar-thumb{
-  background:#415966;
-  border:2px solid #0b151c;
-  border-radius:10px;
-}
-
-/* Cascading-filter visual hint: available values remain crisp and readable. */
-.field select{
-  cursor:pointer;
-}
-.field select:disabled{
-  opacity:.55;
-  cursor:not-allowed;
-}
-
-@media(max-width:800px){
-  .filter-panel{
-    top:4px !important;
-    max-height:calc(100vh - 8px);
-  }
-}
-
-
-/* ============================================================
-   v10 — Clickable chart/KPI drill-down to DETAIL VIEW
-   ============================================================ */
-
-/* 10 KPI cards including RHO Qty + Zonal Qty */
-#kpi-grid.kpi-grid{
-  grid-template-columns:repeat(10,minmax(0,1fr)) !important;
-}
-
-/* Clickable numbers outside donut circles / beside bars */
-.drill-count-btn{
-  appearance:none;
-  -webkit-appearance:none;
-  border:0;
-  background:transparent !important;
-  padding:0;
-  margin:0;
-  min-width:0;
-  color:#8de0ff !important;
-  font:inherit;
-  font-weight:900 !important;
-  text-align:right;
-  cursor:pointer;
-  text-decoration:underline;
-  text-decoration-color:rgba(141,224,255,.42);
-  text-underline-offset:2px;
-}
-
-.drill-count-btn:hover,
-.drill-count-btn:focus-visible{
-  color:#ffffff !important;
-  text-decoration-color:#ffffff;
-  outline:none;
-}
-
-/* RHO Qty / Zonal Qty clickable KPI values */
-.kpi-drill-value{
-  display:block;
-  width:max-content;
-  max-width:100%;
-  border:0;
-  background:transparent !important;
-  padding:0;
-  margin-top:7px;
-  color:#8de0ff !important;
-  cursor:pointer;
-  text-decoration:underline;
-  text-decoration-color:rgba(141,224,255,.42);
-  text-underline-offset:3px;
-}
-
-.kpi-drill-value:hover,
-.kpi-drill-value:focus-visible{
-  color:#ffffff !important;
-  outline:none;
-  text-decoration-color:#ffffff;
-}
-
-/* Active DETAIL VIEW drill-down indicator */
-.detail-filter-chip{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  width:max-content;
-  max-width:100%;
-  margin-top:7px;
-  padding:5px 8px;
-  border-radius:7px;
-  border:1px solid #375362;
-  background:#13232d;
-  color:#cfe3ec;
-  font-size:10px;
-  font-weight:750;
-}
-
-.detail-filter-chip button{
-  border:0;
-  background:#263c48;
-  color:#ffffff;
-  border-radius:5px;
-  padding:3px 7px;
-  font-size:9px;
-  font-weight:850;
-  cursor:pointer;
-}
-
-.detail-filter-chip button:hover{
-  background:#355365;
-}
-
-#detail-view{
-  scroll-margin-top:18px;
-}
-
-@media(max-width:1700px){
-  #kpi-grid.kpi-grid{
-    grid-template-columns:repeat(5,minmax(0,1fr)) !important;
-  }
-}
-@media(max-width:900px){
-  #kpi-grid.kpi-grid{
-    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-  }
-}
-
-
-/* v11 — exact clicked-number drill-down + personnel windows */
-.kpi-drill-value{color:#8de0ff !important}
-.kpi-drill-value:hover,.kpi-drill-value:focus-visible{color:#ffffff !important}
-
-.personnel-card{
-  margin-top:14px;background:#0f171e;border:1px solid #2a3d49;border-radius:14px;
-  box-shadow:0 12px 30px rgba(0,0,0,.38);overflow:hidden;
-}
-.personnel-head{
-  display:flex;align-items:flex-end;justify-content:space-between;gap:18px;
-  padding:14px 16px 12px;background:#111c24;border-bottom:1px solid #2a3d49;
-}
-.personnel-head h2{margin:3px 0;color:#fff;font-size:18px}
-.personnel-head p{margin:0;color:#98abb7;font-size:11px}
-.personnel-table-wrap{overflow:auto;max-height:420px;background:#080d11}
-.personnel-table{width:100%;min-width:620px;border-collapse:separate;border-spacing:0}
-.personnel-table th{
-  position:sticky;top:0;z-index:2;background:#17242d;color:#fff;text-align:left;
-  padding:9px 10px;border-right:1px solid #2c3c47;border-bottom:1px solid #3a4d58;
-}
-.personnel-table td{
-  padding:8px 10px;background:#0b1116;color:#edf4f7;
-  border-right:1px solid #24333d;border-bottom:1px solid #24333d;
-}
-.personnel-table tbody tr:nth-child(even) td{background:#10171d}
-.personnel-table tbody tr:hover td{background:#17242d}
-.personnel-card .section-kicker{color:#75cce9;font-size:9px;font-weight:900;letter-spacing:1.1px}
-@media(max-width:850px){.personnel-head{align-items:flex-start;flex-direction:column}}
-
-
-/* ============================================================
-   v12 — RHO and Zonal directories always visible at dashboard end
-   ============================================================ */
-
-#rho-directory,
-#zonal-directory{
-  display:block !important;
-}
-
-#rho-directory.hidden,
-#zonal-directory.hidden{
-  display:block !important;
-}
-
-.personnel-card{
-  scroll-margin-top:18px;
-}
-
-.personnel-head{
-  align-items:flex-start;
-}
-
-.personnel-table td:nth-child(2),
-.personnel-table td:nth-child(3){
-  font-variant-numeric:tabular-nums;
-}
-
-/* Local folder source bar — pinned bottom-left, out of the way of the report. */
-.local-source {
-  position: fixed; left: 14px; bottom: 14px; z-index: 40; display: flex; align-items: center;
-  gap: 8px; flex-wrap: wrap; max-width: min(660px, calc(100vw - 28px));
-  padding: 8px 12px; border-radius: 10px; font-size: 11.5px;
-  background: rgba(17, 24, 33, .95); border: 1px solid #2c3e50; color: #cfe0ec;
-  box-shadow: 0 6px 22px rgba(0,0,0,.35);
-}
-.local-source .ls-label { font-weight: 800; letter-spacing: .09em; text-transform: uppercase; font-size: 9.5px; color: #8fb2c9; }
-.local-source .ls-state { font-weight: 600; }
-.local-source .ls-state b { color: #fff; }
-.local-source .btn-ghost {
-  background: #1b2836; color: #7fc4ea; border: 1px solid #2f5570; border-radius: 7px;
-  padding: 5px 11px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;
-}
-.local-source .btn-ghost:hover { background: #24384c; color: #fff; }
-@media print { .local-source { display: none; } }
+.panel-search input:focus { border-color: #ff7777; box-shadow: 0 0 0 3px rgba(241,75,75,.16); }
+th .sort-rank { font-size: 9px; margin-left: 1px; opacity: .9; }
