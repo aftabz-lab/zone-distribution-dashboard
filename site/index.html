@@ -80,6 +80,20 @@
     }
     .zone-snapshot-note strong { font-size: 12px; }
     .zone-header-tools .hero-meta { justify-content: flex-end; }
+    /* Dropdown readability override: text only. */
+    select,
+    select option,
+    select optgroup {
+      color: #ffffff !important;
+    }
+    select option {
+      background-color: #111a20 !important;
+    }
+    select option:checked,
+    select option:hover,
+    select option:focus {
+      color: #ffffff !important;
+    }
     @media (max-width: 820px) {
       .zone-header-tools { align-items: flex-start; min-width: 0; width: 100%; }
       .zone-drive-row, .zone-snapshot-note { justify-content: flex-start; text-align: left; }
