@@ -292,7 +292,7 @@
         }
         status.textContent = info.authorized ? `Connected · ${info.folder.name}` : `Saved · ${info.folder.name}`;
         button.textContent = info.authorized ? "Change Drive folder" : "Connect Google Drive";
-        live.classList.toggle("is-live", !!info.authorized);
+        live.classList.toggle("is-live", !!info.folder);
       }
 
       button.addEventListener("click", async () => {
