@@ -45,6 +45,24 @@
     }
     .zone-drive-button:hover { background: rgba(255,255,255,.12); }
     .zone-drive-button:disabled { opacity: .55; cursor: wait; }
+    .zone-drive-live {
+      display: none;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #bbf7d0;
+      white-space: nowrap;
+    }
+    .zone-drive-live.is-live { display: inline-flex; }
+    .zone-drive-live::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34,197,94,.16);
+    }
     .zone-snapshot-note {
       display: flex;
       align-items: baseline;
@@ -80,6 +98,7 @@
       <div id="zone-drive-tools" class="zone-drive-row">
         <span id="zone-drive-status" class="zone-drive-status">Checking Google Drive…</span>
         <button id="zone-drive-connect" class="zone-drive-button" type="button">Connect Google Drive</button>
+        <span id="zone-drive-live" class="zone-drive-live">Google Drive Live</span>
       </div>
       <div class="zone-snapshot-note" aria-live="polite">
         <span class="zone-snapshot-label">LAST SNAPSHOT TAKEN</span>
@@ -247,12 +266,14 @@
     (() => {
       const button = document.getElementById("zone-drive-connect");
       const status = document.getElementById("zone-drive-status");
+      const live = document.getElementById("zone-drive-live");
       const tools = document.getElementById("zone-drive-tools");
       if (!button || !status || !tools) return;
 
       const drive = () => window.ShwapnoDrive;
       function refreshDriveHeader() {
         const api = drive();
+        live.classList.remove("is-live");
         if (!api) {
           status.textContent = "Google Drive unavailable";
           button.textContent = "Connect Google Drive";
@@ -271,6 +292,7 @@
         }
         status.textContent = info.authorized ? `Connected · ${info.folder.name}` : `Saved · ${info.folder.name}`;
         button.textContent = info.authorized ? "Change Drive folder" : "Connect Google Drive";
+        live.classList.toggle("is-live", !!info.authorized);
       }
 
       button.addEventListener("click", async () => {
