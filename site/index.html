@@ -130,6 +130,19 @@
       -webkit-text-fill-color: #ffffff !important;
       opacity: 1 !important;
     }
+
+    /* FINAL exact searchable-dropdown text fix.
+       filter-enhance.js renders every data-filter dropdown as .combo-list > .combo-opt. */
+    .combo-list,
+    .combo-list .combo-opt,
+    .combo-list .combo-opt.on,
+    .combo-list .combo-opt:hover,
+    .combo-list .combo-opt:focus,
+    .combo-list .combo-empty {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
+    }
     @media (max-width: 820px) {
       .zone-header-tools { align-items: flex-start; min-width: 0; width: 100%; }
       .zone-drive-row, .zone-snapshot-note { justify-content: flex-start; text-align: left; }
