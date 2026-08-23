@@ -464,24 +464,58 @@
 </script>
 
 <script>
-(function removeLegacySearchOutlets(){
-  function removeIt(root){
-    const scope = root || document;
-    scope.querySelectorAll('input').forEach((input) => {
+(function removeLegacySearchOutletsCompletely(){
+  const TARGET = 'SEARCH OUTLETS';
+
+  function norm(s){ return (s || '').replace(/\s+/g, ' ').trim().toUpperCase(); }
+
+  function removeTarget(scope){
+    const root = scope && scope.querySelectorAll ? scope : document;
+
+    /* Remove the legacy input together with its complete field wrapper. */
+    root.querySelectorAll('input').forEach((input) => {
       const p = (input.getAttribute('placeholder') || '').trim().toLowerCase();
       if (p.startsWith('outlet code, name, officer, area')) {
-        const label = input.closest('label');
-        if (label) { label.remove(); return; }
-        const field = input.closest('.field, .search-field, .search-outlets-field, .outlet-search-field');
-        if (field) field.remove(); else input.remove();
+        const wrapper = input.closest('label, .field, .search-field, .search-outlets-field, .outlet-search-field, .quick-outlet-search');
+        if (wrapper) wrapper.remove();
+        else input.remove();
       }
     });
+
+    /* Some scripts create the SEARCH OUTLETS caption separately from the input. */
+    root.querySelectorAll('span, label, div, p, strong').forEach((el) => {
+      if (norm(el.textContent) !== TARGET) return;
+
+      /* Prefer removing only the field wrapper, never the whole filter/action section. */
+      const field = el.closest('label, .field, .search-field, .search-outlets-field, .outlet-search-field, .quick-outlet-search');
+      if (field) {
+        field.remove();
+        return;
+      }
+
+      /* If the exact caption itself is a standalone node, remove just that node. */
+      el.remove();
+    });
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => removeIt(document));
-  else removeIt(document);
-  new MutationObserver((ms) => {
-    ms.forEach((m) => m.addedNodes.forEach((n) => { if (n && n.nodeType === 1) removeIt(n); }));
-  }).observe(document.documentElement, {childList:true, subtree:true});
+
+  function run(){ removeTarget(document); }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run, {once:true});
+  } else {
+    run();
+  }
+
+  /* Catch legacy controls injected later by app/filter scripts. */
+  const observer = new MutationObserver(() => run());
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+
+  /* One extra pass after all page scripts/data have settled. */
+  window.addEventListener('load', () => {
+    run();
+    setTimeout(run, 100);
+    setTimeout(run, 500);
+  });
 })();
 </script>
 </body>
