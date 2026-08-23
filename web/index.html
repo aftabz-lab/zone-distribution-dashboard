@@ -80,19 +80,55 @@
     }
     .zone-snapshot-note strong { font-size: 12px; }
     .zone-header-tools .hero-meta { justify-content: flex-end; }
-    /* Dropdown readability override: text only. */
+    /* Dropdown readability override: make all dropdown menu text bright pure white. */
     select,
     select option,
     select optgroup {
       color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
     }
-    select option {
+    select option,
+    select optgroup {
       background-color: #111a20 !important;
     }
     select option:checked,
     select option:hover,
-    select option:focus {
+    select option:focus,
+    select optgroup,
+    [role="listbox"],
+    [role="listbox"] *,
+    [role="option"],
+    [role="option"] *,
+    .dropdown-menu,
+    .dropdown-menu *,
+    .dropdown-content,
+    .dropdown-content *,
+    .select-dropdown,
+    .select-dropdown *,
+    .select-options,
+    .select-options *,
+    .filter-dropdown,
+    .filter-dropdown *,
+    .filter-options,
+    .filter-options *,
+    .combo-options,
+    .combo-options *,
+    .combo-menu,
+    .combo-menu *,
+    .combo-option,
+    .combo-option *,
+    .options-panel,
+    .options-panel *,
+    .option-list,
+    .option-list *,
+    [data-dropdown-list],
+    [data-dropdown-list] *,
+    [data-option-list],
+    [data-option-list] * {
       color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+      opacity: 1 !important;
     }
     @media (max-width: 820px) {
       .zone-header-tools { align-items: flex-start; min-width: 0; width: 100%; }
@@ -341,5 +377,55 @@
   <script type="module" src="/snapshot-times.js?v=portal-v8-one-second-snapshot-workers"></script>
   <script src="app.js"></script>
 <script src="filter-enhance.js?v=combo-search-v1"></script>
+<script>
+(function () {
+  const CONTAINER_SELECTORS = [
+    '[role="listbox"]',
+    '.dropdown-menu', '.dropdown-content', '.select-dropdown', '.select-options',
+    '.filter-dropdown', '.filter-options', '.combo-options', '.combo-menu',
+    '.options-panel', '.option-list', '[data-dropdown-list]', '[data-option-list]'
+  ];
+  const ITEM_SELECTORS = [
+    '[role="option"]', 'option', 'li', '.option', '.dropdown-item', '.combo-option',
+    '.select-option', '.filter-option', 'button', 'div', 'span', 'label'
+  ];
+  function brighten(scope) {
+    const root = scope || document;
+    CONTAINER_SELECTORS.forEach((sel) => {
+      root.querySelectorAll(sel).forEach((box) => {
+        box.style.color = '#ffffff';
+        box.style.webkitTextFillColor = '#ffffff';
+        box.style.opacity = '1';
+        box.querySelectorAll(ITEM_SELECTORS.join(',')).forEach((el) => {
+          el.style.color = '#ffffff';
+          el.style.webkitTextFillColor = '#ffffff';
+          el.style.opacity = '1';
+        });
+      });
+    });
+    root.querySelectorAll('select option, select optgroup').forEach((el) => {
+      el.style.color = '#ffffff';
+      el.style.webkitTextFillColor = '#ffffff';
+      el.style.opacity = '1';
+      if (!el.style.backgroundColor) el.style.backgroundColor = '#111a20';
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => brighten(document));
+  } else {
+    brighten(document);
+  }
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (node && node.nodeType === 1) brighten(node);
+      });
+    }
+  });
+  observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+  document.addEventListener('click', () => setTimeout(() => brighten(document), 0), true);
+  document.addEventListener('focusin', () => setTimeout(() => brighten(document), 0), true);
+})();
+</script>
 </body>
 </html>
