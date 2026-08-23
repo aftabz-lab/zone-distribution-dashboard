@@ -156,15 +156,6 @@
     .combo-list .combo-empty {
       background-color: transparent !important;
     }
-
-    /* Remove legacy secondary SEARCH OUTLETS field only. */
-    label:has(input[placeholder="Outlet code, name, officer, area"]),
-    label:has(input[placeholder^="Outlet code, name, officer, area"]),
-    .search-outlets-field,
-    .outlet-search-field,
-    .quick-outlet-search {
-      display: none !important;
-    }
     @media (max-width: 820px) {
       .zone-header-tools { align-items: flex-start; min-width: 0; width: 100%; }
       .zone-drive-row, .zone-snapshot-note { justify-content: flex-start; text-align: left; }
@@ -460,62 +451,6 @@
   observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
   document.addEventListener('click', () => setTimeout(() => brighten(document), 0), true);
   document.addEventListener('focusin', () => setTimeout(() => brighten(document), 0), true);
-})();
-</script>
-
-<script>
-(function removeLegacySearchOutletsCompletely(){
-  const TARGET = 'SEARCH OUTLETS';
-
-  function norm(s){ return (s || '').replace(/\s+/g, ' ').trim().toUpperCase(); }
-
-  function removeTarget(scope){
-    const root = scope && scope.querySelectorAll ? scope : document;
-
-    /* Remove the legacy input together with its complete field wrapper. */
-    root.querySelectorAll('input').forEach((input) => {
-      const p = (input.getAttribute('placeholder') || '').trim().toLowerCase();
-      if (p.startsWith('outlet code, name, officer, area')) {
-        const wrapper = input.closest('label, .field, .search-field, .search-outlets-field, .outlet-search-field, .quick-outlet-search');
-        if (wrapper) wrapper.remove();
-        else input.remove();
-      }
-    });
-
-    /* Some scripts create the SEARCH OUTLETS caption separately from the input. */
-    root.querySelectorAll('span, label, div, p, strong').forEach((el) => {
-      if (norm(el.textContent) !== TARGET) return;
-
-      /* Prefer removing only the field wrapper, never the whole filter/action section. */
-      const field = el.closest('label, .field, .search-field, .search-outlets-field, .outlet-search-field, .quick-outlet-search');
-      if (field) {
-        field.remove();
-        return;
-      }
-
-      /* If the exact caption itself is a standalone node, remove just that node. */
-      el.remove();
-    });
-  }
-
-  function run(){ removeTarget(document); }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', run, {once:true});
-  } else {
-    run();
-  }
-
-  /* Catch legacy controls injected later by app/filter scripts. */
-  const observer = new MutationObserver(() => run());
-  observer.observe(document.documentElement, {childList:true, subtree:true});
-
-  /* One extra pass after all page scripts/data have settled. */
-  window.addEventListener('load', () => {
-    run();
-    setTimeout(run, 100);
-    setTimeout(run, 500);
-  });
 })();
 </script>
 </body>

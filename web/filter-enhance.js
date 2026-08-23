@@ -1,7 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════════
    filter-enhance.js — makes every filter dropdown searchable and adds a
    free-text search inside the filter panel.
-
    The original <select data-filter> elements stay in the DOM and remain the
    source of truth: this only puts a searchable box in front of each one and
    writes back with a normal "change" event, so the existing cascading,
@@ -9,7 +8,6 @@
    ═══════════════════════════════════════════════════════════════════════ */
 (function () {
   "use strict";
-
   const ready = (fn) =>
     document.readyState === "loading"
       ? document.addEventListener("DOMContentLoaded", fn)
@@ -22,7 +20,6 @@
   function buildCombo(select) {
     if (select.dataset.comboReady === "1") return;
     select.dataset.comboReady = "1";
-
     const wrap = document.createElement("div");
     wrap.className = "combo";
     const input = document.createElement("input");
@@ -35,7 +32,6 @@
     const list = document.createElement("div");
     list.className = "combo-list";
     list.hidden = true;
-
     select.parentNode.insertBefore(wrap, select);
     wrap.appendChild(input);
     wrap.appendChild(list);
@@ -49,7 +45,6 @@
     };
 
     const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); };
-
     const open = (term = "") => {
       const needle = term.trim().toLowerCase();
       const matches = optionsOf(select).filter(
@@ -78,7 +73,6 @@
         }),
       );
     };
-
     input.addEventListener("focus", () => open(""));
     input.addEventListener("input", () => open(input.value));
     input.addEventListener("keydown", (ev) => {
@@ -89,7 +83,6 @@
       }
     });
     input.addEventListener("blur", () => setTimeout(close, 120));
-
     // Cascading repopulates the select; keep the visible text in step.
     new MutationObserver(showValue).observe(select, { childList: true });
     select.addEventListener("change", showValue);
@@ -100,7 +93,6 @@
     const panel = document.querySelector(".filter-panel");
     const source = document.getElementById("global-search");
     if (!panel || !source || panel.querySelector(".panel-search")) return;
-
     const box = document.createElement("div");
     box.className = "panel-search";
     box.innerHTML =
@@ -109,7 +101,6 @@
          placeholder="Outlet code, name, officer, area — anything">`;
     const actions = panel.querySelector("#reset-filters");
     (actions ? actions.parentNode : panel).insertBefore(box, actions || null);
-
     const input = box.querySelector("input");
     input.value = source.value;
     // Drives the dashboard's own search so results and dropdowns stay in step.
@@ -121,10 +112,9 @@
       if (document.activeElement !== input) input.value = source.value;
     });
   }
-
   function enhance() {
     document.querySelectorAll("select[data-filter]").forEach(buildCombo);
-    addPanelSearch();
+    // addPanelSearch();
   }
 
   ready(() => {
