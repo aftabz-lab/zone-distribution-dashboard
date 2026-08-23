@@ -7,6 +7,67 @@
   <meta name="dashboard-theme-version" content="solid-dark-v7-20260808">
   <title>Zone Distribution Dashboard</title>
   <link rel="stylesheet" href="styles.css?v=solid-dark-dropdown-v2-20260808">
+  <style id="zone-header-drive-snapshot-style">
+    .zone-header-tools {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+      min-width: 300px;
+    }
+    .zone-drive-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .zone-drive-status {
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      opacity: .78;
+    }
+    .zone-drive-button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 10px;
+      background: rgba(255,255,255,.07);
+      color: inherit;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .zone-drive-button:hover { background: rgba(255,255,255,.12); }
+    .zone-drive-button:disabled { opacity: .55; cursor: wait; }
+    .zone-snapshot-note {
+      display: flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      text-align: right;
+      font-size: 12px;
+    }
+    .zone-snapshot-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      opacity: .62;
+    }
+    .zone-snapshot-note strong { font-size: 12px; }
+    .zone-header-tools .hero-meta { justify-content: flex-end; }
+    @media (max-width: 820px) {
+      .zone-header-tools { align-items: flex-start; min-width: 0; width: 100%; }
+      .zone-drive-row, .zone-snapshot-note { justify-content: flex-start; text-align: left; }
+      .zone-header-tools .hero-meta { justify-content: flex-start; }
+    }
+  </style>
 </head>
 <body>
   <header class="hero">
@@ -15,12 +76,21 @@
       <h1 id="dashboard-title">Zone Distribution Dashboard</h1>
       <p id="dashboard-subtitle">Outlet network, leadership, format, geography and location profile</p>
     </div>
-    <div class="hero-meta">
-      <span id="source-badge" class="meta-badge">Loading source…</span>
-      <span id="quality-badge" class="meta-badge">Validating…</span>
+    <div class="zone-header-tools">
+      <div id="zone-drive-tools" class="zone-drive-row">
+        <span id="zone-drive-status" class="zone-drive-status">Checking Google Drive…</span>
+        <button id="zone-drive-connect" class="zone-drive-button" type="button">Connect Google Drive</button>
+      </div>
+      <div class="zone-snapshot-note" aria-live="polite">
+        <span class="zone-snapshot-label">LAST SNAPSHOT TAKEN</span>
+        <strong data-snapshot-key="zone-distribution">Checking…</strong>
+      </div>
+      <div class="hero-meta">
+        <span id="source-badge" class="meta-badge">Loading source…</span>
+        <span id="quality-badge" class="meta-badge">Validating…</span>
+      </div>
     </div>
   </header>
-
   <main class="page">
     <section class="filter-panel">
       <div class="filter-row primary-filters">
@@ -57,7 +127,6 @@
           <select id="filter-status" data-filter="Status"></select>
         </label>
       </div>
-
       <div id="advanced-filters" class="filter-row advanced-filters hidden">
         <label class="field">
           <span>Area</span>
@@ -88,7 +157,6 @@
           <select id="filter-layout" data-filter="Layout shape"></select>
         </label>
       </div>
-
       <div class="action-row">
         <div class="action-left">
           <button id="advanced-toggle" class="btn ghost" type="button">More filters</button>
@@ -99,7 +167,6 @@
           <button id="download-csv" class="btn primary" type="button">Download filtered CSV</button>
         </div>
       </div>
-
       <div id="column-panel" class="column-panel hidden">
         <div class="column-panel-head">
           <strong>Visible columns</strong>
@@ -111,9 +178,7 @@
         <div id="column-options" class="column-options"></div>
       </div>
     </section>
-
     <section id="kpi-grid" class="kpi-grid"></section>
-
     <section class="chart-grid">
       <article class="chart-card">
         <div class="card-heading">
@@ -140,7 +205,6 @@
         <div id="chart-location" class="chart-body"></div>
       </article>
     </section>
-
     <section class="table-card">
       <div class="table-toolbar">
         <div>
@@ -159,7 +223,6 @@
           </select>
         </label>
       </div>
-
       <div class="table-hint">Click any column heading to sort. Click again to reverse the order. The first three columns remain frozen while you scroll horizontally.</div>
       <div class="table-wrap">
         <table id="data-table">
@@ -167,19 +230,80 @@
           <tbody id="table-body"></tbody>
         </table>
       </div>
-
       <div class="pagination">
         <button id="prev-page" class="btn ghost" type="button">Previous</button>
         <span id="page-info">Page 1</span>
         <button id="next-page" class="btn ghost" type="button">Next</button>
       </div>
     </section>
-
     <footer class="footer">
       <strong>Refresh workflow:</strong> replace the single Excel workbook in <code>/data</code> with any filename, keep the required headers unchanged, and commit. GitHub Actions rebuilds this dashboard automatically.
     </footer>
   </main>
 
+
+  <script src="/google-drive-source.js?v=shared-drive-v1"></script>
+  <script>
+    (() => {
+      const button = document.getElementById("zone-drive-connect");
+      const status = document.getElementById("zone-drive-status");
+      const tools = document.getElementById("zone-drive-tools");
+      if (!button || !status || !tools) return;
+
+      const drive = () => window.ShwapnoDrive;
+      function refreshDriveHeader() {
+        const api = drive();
+        if (!api) {
+          status.textContent = "Google Drive unavailable";
+          button.textContent = "Connect Google Drive";
+          return;
+        }
+        const info = api.describe();
+        if (!info.configReady) {
+          status.textContent = "Drive setup required";
+          button.textContent = "Set up Google Drive";
+          return;
+        }
+        if (!info.folder) {
+          status.textContent = "No Drive folder selected";
+          button.textContent = "Connect Google Drive";
+          return;
+        }
+        status.textContent = info.authorized ? `Connected · ${info.folder.name}` : `Saved · ${info.folder.name}`;
+        button.textContent = info.authorized ? "Change Drive folder" : "Connect Google Drive";
+      }
+
+      button.addEventListener("click", async () => {
+        const api = drive();
+        if (!api) return;
+        const info = api.describe();
+        if (!info.configReady) {
+          window.open("/", "_blank", "noopener");
+          status.textContent = "Open Home → Drive setup once";
+          return;
+        }
+        button.disabled = true;
+        status.textContent = info.folder && !info.authorized ? "Connecting to Google Drive…" : "Opening Google Drive…";
+        try {
+          const current = api.describe();
+          await api.connect({
+            pickFolder: !current.folder || current.authorized,
+            title: "Select shared dashboard data folder",
+          });
+          refreshDriveHeader();
+        } catch (error) {
+          if (error?.name !== "AbortError") status.textContent = error?.message || "Google Drive connection failed";
+        } finally {
+          button.disabled = false;
+        }
+      });
+      window.addEventListener("storage", refreshDriveHeader);
+      window.addEventListener("focus", refreshDriveHeader);
+      refreshDriveHeader();
+    })();
+  </script>
+  <script type="module" src="/snapshot-times.js?v=portal-v8-one-second-snapshot-workers"></script>
   <script src="app.js"></script>
+<script src="filter-enhance.js?v=combo-search-v1"></script>
 </body>
 </html>
