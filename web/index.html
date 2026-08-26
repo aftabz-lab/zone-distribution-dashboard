@@ -3,10 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="dashboard-theme-version" content="solid-dark-v7-20260808">
+  <meta name="color-scheme" content="dark light">
+  <meta name="dashboard-theme-version" content="light-toggle-v1-20260826">
   <title>Zone Distribution Dashboard</title>
-  <link rel="stylesheet" href="styles.css?v=solid-dark-dropdown-v2-20260808">
+  <script>
+    (() => {
+      const key = "shwapno-zone-distribution-theme";
+      let theme = "dark";
+      try { theme = localStorage.getItem(key) === "light" ? "light" : "dark"; } catch (error) {}
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=light-toggle-v1-20260826">
   <style id="zone-header-drive-snapshot-style">
     .zone-header-tools {
       display: flex;
@@ -175,6 +183,14 @@
         <span id="zone-drive-status" class="zone-drive-status">Checking Google Drive…</span>
         <button id="zone-drive-connect" class="zone-drive-button" type="button">Connect Google Drive</button>
         <span id="zone-drive-live" class="zone-drive-live">Google Drive Live</span>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to light theme" title="Switch to light theme">
+          <span class="theme-toggle-icons" aria-hidden="true">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"></path></svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"></path></svg>
+          </span>
+          <span class="theme-label theme-label-light">Light theme</span>
+          <span class="theme-label theme-label-dark">Dark theme</span>
+        </button>
       </div>
       <div class="zone-snapshot-note" aria-live="polite">
         <span class="zone-snapshot-label">LAST SNAPSHOT TAKEN</span>
@@ -404,6 +420,32 @@
   <script src="app.js"></script>
 <script src="filter-enhance.js?v=combo-search-v1"></script>
 <script>
+(() => {
+  const key = "shwapno-zone-distribution-theme";
+  const root = document.documentElement;
+  const button = document.getElementById("theme-toggle");
+  const colorScheme = document.querySelector('meta[name="color-scheme"]');
+  if (!button) return;
+
+  function applyTheme(theme, persist) {
+    const next = theme === "light" ? "light" : "dark";
+    root.dataset.theme = next;
+    root.style.colorScheme = next;
+    button.setAttribute("aria-pressed", String(next === "light"));
+    button.setAttribute("aria-label", `Switch to ${next === "light" ? "dark" : "light"} theme`);
+    button.title = button.getAttribute("aria-label");
+    if (colorScheme) colorScheme.content = `${next} ${next === "light" ? "dark" : "light"}`;
+    if (persist) {
+      try { localStorage.setItem(key, next); } catch (error) {}
+    }
+    window.dispatchEvent(new CustomEvent("dashboard-theme-change", { detail: { theme: next } }));
+  }
+
+  applyTheme(root.dataset.theme, false);
+  button.addEventListener("click", () => applyTheme(root.dataset.theme === "light" ? "dark" : "light", true));
+})();
+</script>
+<script>
 (function () {
   const CONTAINER_SELECTORS = [
     '[role="listbox"]',
@@ -417,23 +459,26 @@
   ];
   function brighten(scope) {
     const root = scope || document;
+    const isLight = document.documentElement.dataset.theme === 'light';
+    const foreground = isLight ? '#17384b' : '#ffffff';
+    const optionBackground = isLight ? '#ffffff' : '#111a20';
     CONTAINER_SELECTORS.forEach((sel) => {
       root.querySelectorAll(sel).forEach((box) => {
-        box.style.color = '#ffffff';
-        box.style.webkitTextFillColor = '#ffffff';
+        box.style.color = foreground;
+        box.style.webkitTextFillColor = foreground;
         box.style.opacity = '1';
         box.querySelectorAll(ITEM_SELECTORS.join(',')).forEach((el) => {
-          el.style.color = '#ffffff';
-          el.style.webkitTextFillColor = '#ffffff';
+          el.style.color = foreground;
+          el.style.webkitTextFillColor = foreground;
           el.style.opacity = '1';
         });
       });
     });
     root.querySelectorAll('select option, select optgroup').forEach((el) => {
-      el.style.color = '#ffffff';
-      el.style.webkitTextFillColor = '#ffffff';
+      el.style.color = foreground;
+      el.style.webkitTextFillColor = foreground;
       el.style.opacity = '1';
-      if (!el.style.backgroundColor) el.style.backgroundColor = '#111a20';
+      el.style.backgroundColor = optionBackground;
     });
   }
   if (document.readyState === 'loading') {
@@ -451,6 +496,7 @@
   observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
   document.addEventListener('click', () => setTimeout(() => brighten(document), 0), true);
   document.addEventListener('focusin', () => setTimeout(() => brighten(document), 0), true);
+  window.addEventListener('dashboard-theme-change', () => brighten(document));
 })();
 </script>
 </body>
