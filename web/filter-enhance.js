@@ -85,6 +85,10 @@
     input.addEventListener("blur", () => setTimeout(close, 120));
     // Cascading repopulates the select; keep the visible text in step.
     new MutationObserver(showValue).observe(select, { childList: true });
+    select.addEventListener("filter-options-updated", () => {
+      showValue();
+      if (!list.hidden) open(input.value);
+    });
     select.addEventListener("change", showValue);
     showValue();
   }

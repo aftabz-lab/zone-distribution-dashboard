@@ -61,16 +61,45 @@ function formatDate(value){
   return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
 function normalize(value){ return String(value ?? "").trim().toLocaleLowerCase(); }
-function uniqueSorted(key){
-  return [...new Set(state.rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
+function uniqueSorted(key,rows=state.rows){
+  return [...new Set(rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
     .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:"base"}));
+}
+function matchingRows(excludedFilterKey=""){
+  const search=normalize(state.search);
+  const active=Object.entries(state.filters).filter(([key,value])=>value && key!==excludedFilterKey);
+  return state.rows.filter(row=>{
+    for(const [key,value] of active){
+      if(String(row[key] ?? "") !== value) return false;
+    }
+    if(search){
+      let found=false;
+      for(const [key] of COLUMNS){
+        if(normalize(row[key]).includes(search)){found=true;break;}
+      }
+      if(!found) return false;
+    }
+    return true;
+  });
+}
+function filterOptionValues(key){
+  const current=state.filters[key] || "";
+  const values=uniqueSorted(key,matchingRows(key));
+  // Never silently clear a user's selection. If another filter makes the
+  // combination empty, keep the current value available so it can be changed.
+  if(current && !values.includes(current)) values.unshift(current);
+  return values;
 }
 function populateSelect(select){
   const key=select.dataset.filter;
   const current=state.filters[key] || "";
-  const opts=uniqueSorted(key);
+  const opts=filterOptionValues(key);
   select.innerHTML=`<option value="">All</option>`+opts.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");
-  if(opts.includes(current)) select.value=current;
+  select.value=current;
+  select.dispatchEvent(new CustomEvent("filter-options-updated",{bubbles:false}));
+}
+function refreshFilterOptions(){
+  document.querySelectorAll("select[data-filter]").forEach(populateSelect);
 }
 function initFilters(){
   document.querySelectorAll("select[data-filter]").forEach(select=>{
@@ -102,21 +131,8 @@ function initFilters(){
 }
 
 function applyFilters(){
-  const search=normalize(state.search);
-  const active=Object.entries(state.filters).filter(([,v])=>v);
-  state.filtered=state.rows.filter(row=>{
-    for(const [key,value] of active){
-      if(String(row[key] ?? "") !== value) return false;
-    }
-    if(search){
-      let found=false;
-      for(const [key] of COLUMNS){
-        if(normalize(row[key]).includes(search)){found=true;break;}
-      }
-      if(!found) return false;
-    }
-    return true;
-  });
+  state.filtered=matchingRows();
+  refreshFilterOptions();
   sortRows();
   renderAll();
 }
