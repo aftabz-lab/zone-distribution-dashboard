@@ -766,3 +766,26 @@ html[data-theme="light"] .combo-list .combo-empty{color:#687f8c !important;-webk
 @media(prefers-reduced-motion:reduce){
   .theme-toggle{transition:none}
 }
+
+
+/* ==========================================================
+   STICKY COMMAND CENTER v1
+   Freeze only the dashboard header + complete filter panel.
+   KPI cards, charts, table, pagination and footer keep scrolling.
+   ========================================================== */
+
+.frozen-command-center{
+  position:sticky;
+  top:0;
+  z-index:500;
+  background:#081117;
+  isolation:isolate;
+}
+.frozen-filter-shell{padding-bottom:0}
+.frozen-filter-shell .filter-panel{margin-bottom:0}
+.scrolling-content{padding-top:14px}
+html[data-theme="light"] .frozen-command-center{background:#edf3f7}
+
+@media(max-width:800px){
+  .frozen-command-center{position:relative}
+}

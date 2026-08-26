@@ -14,7 +14,7 @@
       document.documentElement.dataset.theme = theme;
     })();
   </script>
-  <link rel="stylesheet" href="styles.css?v=light-toggle-v1-20260826">
+  <link rel="stylesheet" href="styles.css?v=sticky-command-center-v1-20260826">
   <style id="zone-header-drive-snapshot-style">
     .zone-header-tools {
       display: flex;
@@ -172,6 +172,7 @@
   </style>
 </head>
 <body>
+  <div class="frozen-command-center">
   <header class="hero">
     <div>
       <div class="eyebrow">NETWORK INTELLIGENCE</div>
@@ -202,7 +203,7 @@
       </div>
     </div>
   </header>
-  <main class="page">
+  <div class="page frozen-filter-shell">
     <section class="filter-panel">
       <div class="filter-row primary-filters">
         <label class="field search-field">
@@ -289,6 +290,9 @@
         <div id="column-options" class="column-options"></div>
       </div>
     </section>
+  </div>
+  </div>
+  <main class="page scrolling-content">
     <section id="kpi-grid" class="kpi-grid"></section>
     <section class="chart-grid">
       <article class="chart-card">
