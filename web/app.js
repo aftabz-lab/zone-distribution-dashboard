@@ -417,3 +417,12 @@ async function init(){
   }
 }
 init();
+
+// Read-only-ish hook for drive-live-rows.js: lets a separate script swap in
+// freshly-fetched rows and re-render, without touching or duplicating any of
+// the click/change listeners init()/initFilters() already registered above.
+window.__zoneDashboard = {
+  get state(){ return state; },
+  refreshFilters: () => document.querySelectorAll("select[data-filter]").forEach(populateSelect),
+  applyFilters,
+};
