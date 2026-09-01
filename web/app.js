@@ -60,6 +60,58 @@ function formatDate(value){
   const dt=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
   return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
+function googleMapsUrl(value){
+  const text=String(value??"").trim();
+  if(!text||/^(?:-|—|n\/?a|none|null|not\s+available|not\s+found)$/i.test(text)) return "";
+
+  function coordinateUrl(latitude,longitude){
+    if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||Math.abs(latitude)>90||Math.abs(longitude)>180) return "";
+    return `https://www.google.com/maps/search/?api=1&query=${latitude.toFixed(7)},${longitude.toFixed(7)}`;
+  }
+  function decimal(degrees,minutes,seconds,hemisphere,limit){
+    const d=Number(degrees),m=Number(minutes),s=Number(seconds);
+    if(!Number.isFinite(d)||!Number.isFinite(m)||!Number.isFinite(s)||d>limit||m>=60||s>=60||(d===limit&&(m>0||s>0))) return null;
+    const result=d+(m/60)+(s/3600);
+    return /[SW]/i.test(hemisphere)?-result:result;
+  }
+
+  // Excel may replace URL slashes with hyphens/backslashes or omit the
+  // protocol. Canonicalize the known Google short-link structures first.
+  const compact=text.replace(/\s+/g,"").replace(/\\/g,"/");
+  const mapsShort=/^(?:https?)?:?[-/]*maps\.app\.goo\.gl[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
+  if(mapsShort) return `https://maps.app.goo.gl/${mapsShort[1]}`;
+  const googleShort=/^(?:https?)?:?[-/]*g\.co[-/]+kgs[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
+  if(googleShort) return `https://g.co/kgs/${googleShort[1]}`;
+  const oldGoogleShort=/^(?:https?)?:?[-/]*goo\.gl[-/]+maps[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
+  if(oldGoogleShort) return `https://goo.gl/maps/${oldGoogleShort[1]}`;
+  if(/^https?:\/\//i.test(text)) return text;
+
+  // Also accept a Google Maps URL copied without its protocol.
+  if(/^(?:(?:www\.)?google\.[A-Z.]+\/maps(?:[/?#]|$)|maps\.google\.[A-Z.]+(?:[/?#]|$))/i.test(compact)){
+    return `https://${compact}`;
+  }
+
+  // Accept Drive/Excel coordinate text such as:
+  // 23°44'13.8"N 90°21'32.0"E - Google Maps
+  const match=/^(\d{1,2})\s*°\s*(\d{1,2})\s*['′]\s*(\d+(?:\.\d+)?)\s*["″]\s*([NS])\s*[,;\s]+(\d{1,3})\s*°\s*(\d{1,2})\s*['′]\s*(\d+(?:\.\d+)?)\s*["″]\s*([EW])(?:\s*-\s*Google\s+Maps?)?$/i.exec(text);
+  if(match){
+    const latitude=decimal(match[1],match[2],match[3],match[4],90);
+    const longitude=decimal(match[5],match[6],match[7],match[8],180);
+    if(latitude!==null&&longitude!==null) return coordinateUrl(latitude,longitude);
+  }
+
+  // Decimal coordinate pairs are common in newer exports.
+  const pair=/^([+-]?\d+(?:\.\d+)?)\s*[,;\s]\s*([+-]?\d+(?:\.\d+)?)(?:\s*-\s*Google\s+Maps?)?$/i.exec(text);
+  if(pair){
+    const url=coordinateUrl(Number(pair[1]),Number(pair[2]));
+    if(url) return url;
+  }
+
+  // Geo Location is an address-specific field, so any remaining meaningful
+  // text can open as a Google Maps search instead of staying plain.
+  const query=text.replace(/\s*-\s*Google\s+Maps?\s*$/i,"").trim();
+  return query?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`:"";
+}
 function normalize(value){ return String(value ?? "").trim().toLocaleLowerCase(); }
 function uniqueSorted(key,rows=state.rows){
   return [...new Set(rows.map(r=>String(r[key] ?? "").trim()).filter(Boolean))]
@@ -285,8 +337,8 @@ function renderCell(row,col){
   } else if(type==="date"){
     display=formatDate(value);
   } else if(type==="url"){
-    const url=String(value||"").trim();
-    if(url && /^https?:\/\//i.test(url)){
+    const url=googleMapsUrl(value);
+    if(url){
       return `<td class="${cls}"><a href="${esc(url)}" target="_blank" rel="noopener">Open map ↗</a></td>`;
     }
   }
