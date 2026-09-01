@@ -52,9 +52,19 @@ export async function publishZoneSnapshot(snapshot) {
 
   const current = await api.readCloudSnapshot(ZONE_ROOT_KEY).catch(() => null);
   const currentPayload = current?.payload;
-  if (currentPayload?.fileSignature && currentPayload.fileSignature === snapshot.fileSignature &&
-      newestTime(currentPayload.generatedAt, current?.updated_at) >= timestamp(snapshot.savedAt)) {
+  // Same file content (name|lastModified|size unchanged) => never republish,
+  // regardless of how recent this local read is. Comparing against
+  // Date.now() here previously defeated this check, since a fresh read is
+  // always "newer" than the last publish, so it always looked "changed".
+  if (currentPayload?.fileSignature && currentPayload.fileSignature === snapshot.fileSignature) {
     return { published: false, reason: "unchanged" };
+  }
+  // Different (or no prior) file signature, but this read is older than what's
+  // already published (e.g. a stale cached read racing a newer publish) =>
+  // don't let it clobber the fresher cloud snapshot.
+  if (currentPayload?.fileSignature &&
+      newestTime(currentPayload.generatedAt, current?.updated_at) >= timestamp(snapshot.savedAt)) {
+    return { published: false, reason: "stale-read" };
   }
 
   const shared = publicZoneSnapshot(snapshot);
