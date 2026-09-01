@@ -26,6 +26,15 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Download latest Zone Distribution workbook from Google Drive
+        run: |
+          mkdir -p data
+          pip install gdown
+          gdown --folder 16HTr8nfPz4P2PMr4QB0bjgwiD110Qd-0 -O temp_drive
+          find temp_drive -name "*.xlsx" -type f | head -1 | xargs -I {} cp "{}" data/Zone_Distribution.xlsx
+          echo "Workbook downloaded:"
+          ls -lh data
+
       - name: Build dashboard from schema-matched Excel workbook
         run: python scripts/build.py
 
