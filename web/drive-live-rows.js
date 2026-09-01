@@ -9,13 +9,11 @@
    cloud rows.
 
    The saved folder persists indefinitely, but the OAuth access token used
-   to actually call the Drive API expires after about an hour. When that
-   happens this attempts one silent, no-prompt token refresh (Google's
-   Identity Services can often do this without any visible popup when the
-   scope was already granted and the browser session is still active); if
-   that still fails, it stops there rather than forcing an interactive
-   consent screen — re-authorizing then happens through the existing
-   "Connect Google Drive" button, not here.
+   to call the Drive API expires after about an hour. Page load must never
+   request a replacement token because Google Identity Services can turn
+   even a nominally silent request into an account chooser. Re-authorizing
+   therefore happens only through the existing user-clicked
+   "Connect Google Drive" button.
 
    Status is reported on the source badge at each stage, on success or
    failure alike, so what happened is visible on the page itself rather than
@@ -187,28 +185,17 @@
 
     const drive = window.ShwapnoDrive;
     if (!drive) return;
-    let info = drive.describe();
+    const info = drive.describe();
     if (!info.folder) return; // cloud/static published data stands as-is
 
     if (!info.authorized) {
-      // The folder stays saved, but the access token expires after ~1hr.
-      // Try one silent renewal before giving up — no forced consent screen.
-      setStatus("Reconnecting Google Drive…");
-      try {
-        await withTimeout(drive.requestToken({ forceConsent: false }), 8000, "Silent Drive reconnect timed out");
-        info = drive.describe();
-      } catch (error) {
-        if (!keepCloudStatus("sign-in is needed for an optional browser refresh")) {
-          setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
-        }
-        return;
+      // Never call requestToken() during page load. It can open Google's
+      // account chooser without a user gesture. The cloud snapshot is the
+      // normal source; the existing button handles any optional reconnect.
+      if (!keepCloudStatus("optional browser refresh is disconnected; use Connect Google Drive manually")) {
+        setStatus("Published data (Drive sign-in optional — use Connect Google Drive)");
       }
-      if (!info.authorized) {
-        if (!keepCloudStatus("sign-in is needed for an optional browser refresh")) {
-          setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
-        }
-        return;
-      }
+      return;
     }
 
     setStatus("Reading Google Drive folder…");
