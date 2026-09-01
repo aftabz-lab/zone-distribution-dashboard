@@ -266,14 +266,37 @@ def main() -> int:
         schema = json.loads((CONFIG_DIR / "schema.json").read_text(encoding="utf-8"))
         dashboard_config = json.loads((CONFIG_DIR / "dashboard.config.json").read_text(encoding="utf-8"))
 
-        rows, metadata = build_rows(schema)
+        try:
+            rows, metadata = build_rows(schema)
+        except Exception as exc:
+            # No workbook in /data (or none matched the schema) is now the
+            # expected, normal case: this dashboard reads its rows live from
+            # the connected Google Drive folder in the browser instead
+            # (web/drive-live-rows.js). Publish an empty-but-valid dataset
+            # rather than failing the whole deploy — site/ still rebuilds
+            # fresh from the current web/ on every run either way, so nothing
+            # goes stale. A workbook can still be dropped in /data later as an
+            # optional fallback for visitors without Drive access; it isn't
+            # required.
+            print(f"No workbook in /data ({exc}) — publishing with 0 rows; live data comes from Google Drive.")
+            rows = []
+            metadata = {
+                "sourceWorkbook": "(none \u2014 Google Drive live)",
+                "sourceWorksheet": "",
+                "headerRow": 0,
+                "rowCount": 0,
+                "columnCount": len(schema.get("requiredHeaders", [])),
+                "duplicateCodes": 0,
+                "blankCodes": 0,
+                "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            }
 
         if SITE_DIR.exists():
             shutil.rmtree(SITE_DIR)
         SITE_DIR.mkdir(parents=True, exist_ok=True)
         (SITE_DIR / "data").mkdir(parents=True, exist_ok=True)
 
-        for filename in ("index.html", "app.js", "styles.css", "folder-source.js", "local-source-init.js", "drive-owner-mode.js", "cloud-snapshot.js", "supabase-sync.js", "filter-enhance.js"):
+        for filename in ("index.html", "app.js", "styles.css", "folder-source.js", "local-source-init.js", "drive-owner-mode.js", "cloud-snapshot.js", "supabase-sync.js", "filter-enhance.js", "drive-live-rows.js"):
             shutil.copy2(WEB_DIR / filename, SITE_DIR / filename)
 
         payload = {
