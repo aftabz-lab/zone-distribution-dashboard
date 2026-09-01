@@ -299,6 +299,19 @@ def main() -> int:
             )
         return 0
     except Exception as exc:
+        # A missing or non-matching workbook should not take the whole site
+        # offline. If a previously published dashboard_data.json already
+        # exists, leave site/ exactly as it is (last good data keeps serving)
+        # and exit 0 so Pages keeps deploying and Actions stays green. The
+        # very next push with a valid workbook resumes normally. Only fail
+        # the build outright when there has never been a successful build to
+        # fall back on.
+        existing = SITE_DIR / "data" / "dashboard_data.json"
+        if existing.exists():
+            print("\nBUILD SKIPPED — keeping the last published data\n============", file=sys.stderr)
+            print(str(exc), file=sys.stderr)
+            print(f"Retained: {existing}", file=sys.stderr)
+            return 0
         print("\nBUILD FAILED\n============", file=sys.stderr)
         print(str(exc), file=sys.stderr)
         return 1
