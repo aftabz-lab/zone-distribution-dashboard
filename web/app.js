@@ -326,9 +326,9 @@ function renderHead(){
   }).join("");
   $("table-head").querySelectorAll("th").forEach(th=>th.addEventListener("click",ev=>setSort(th.dataset.key,ev.shiftKey)));
 }
-function renderCell(row,col){
+function renderCell(row,col,filteredSerial=null){
   const [key,,type]=col;
-  let value=row[key];
+  let value=key==="SL"&&filteredSerial!==null?filteredSerial:row[key];
   let display=value ?? "";
   let cls=columnClass(key);
   if(type==="number"){
@@ -354,8 +354,10 @@ function renderTable(){
   renderHead();
   const columns=COLUMNS.filter(c=>state.visibleColumns.has(c[0]));
   const rows=pageRows();
+  const renumberSl=Boolean(normalize(state.search)||Object.values(state.filters).some(Boolean));
+  const firstFilteredSerial=state.pageSize==="all"?1:(state.page-1)*state.pageSize+1;
   $("table-body").innerHTML=rows.length
-    ? rows.map(row=>`<tr>${columns.map(col=>renderCell(row,col)).join("")}</tr>`).join("")
+    ? rows.map((row,index)=>`<tr>${columns.map(col=>renderCell(row,col,renumberSl?firstFilteredSerial+index:null)).join("")}</tr>`).join("")
     : `<tr><td colspan="${Math.max(1,columns.length)}"><div class="empty-state">No rows match the current filters.</div></td></tr>`;
 
   const total=state.filtered.length;
