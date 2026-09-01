@@ -1,10 +1,12 @@
 /* drive-live-rows.js
-   After the published data/dashboard_data.json has rendered, check whether
-   this browser already has a Google Drive folder connected (the same one
-   used for the "Google Drive Live" badge in the header). If so, look
-   through that folder for the workbook that carries this dashboard's
-   required headers — any filename, whichever file actually matches — parse
-   it client-side, and swap its rows in over the published data.
+   After data/dashboard_data.json has rendered, load the latest validated
+   Zone snapshot published by the unattended Google Drive worker. This is the
+   primary cross-device source and does not depend on a browser OAuth token.
+
+   If this browser also has the Drive folder connected, check it for a newer
+   schema-matching workbook and swap those rows in as an optional live
+   override. A browser Drive error must never erase or replace the published
+   cloud rows.
 
    The saved folder persists indefinitely, but the OAuth access token used
    to actually call the Drive API expires after about an hour. When that
@@ -23,12 +25,24 @@
   const $ = (id) => document.getElementById(id);
   const MAX_CANDIDATE_BYTES = 15 * 1024 * 1024; // guards against scanning huge unrelated exports (Z-Report, audit responses, etc.) that live in the same shared folder
   const NAME_HINT = /zone|distribution|outlet/i;
+  let cloudApplied = false;
+  let cloudStatusText = "";
+  let cloudStatusTitle = "";
 
   function setStatus(text, title) {
     const badge = $("source-badge");
     if (!badge) return;
     badge.textContent = text;
     if (title) badge.title = title;
+  }
+
+  function keepCloudStatus(driveNote = "") {
+    if (!cloudApplied) return false;
+    setStatus(
+      cloudStatusText,
+      [cloudStatusTitle, driveNote ? `Browser Drive refresh: ${driveNote}` : ""].filter(Boolean).join("\n")
+    );
+    return true;
   }
 
   function loadScript(src) {
@@ -106,31 +120,6 @@
   try {
     await waitFor(() => window.__zoneDashboard?.state?.data);
 
-    const drive = window.ShwapnoDrive;
-    if (!drive) return;
-    let info = drive.describe();
-    if (!info.folder) return; // no folder connected at all — published data stands as-is
-
-    if (!info.authorized) {
-      // The folder stays saved, but the access token expires after ~1hr.
-      // Try one silent renewal before giving up — no forced consent screen.
-      // This isn't triggered by a click, so if the browser blocks whatever
-      // popup GIS falls back to, requestToken() can hang rather than
-      // reject — a hard timeout keeps that from freezing this script forever.
-      setStatus("Reconnecting Google Drive…");
-      try {
-        await withTimeout(drive.requestToken({ forceConsent: false }), 8000, "Silent Drive reconnect timed out");
-        info = drive.describe();
-      } catch (error) {
-        setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
-        return;
-      }
-      if (!info.authorized) {
-        setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
-        return;
-      }
-    }
-
     const dash = window.__zoneDashboard;
     const schema = dash.state.data?.schema || {};
     const requiredHeaders = schema.requiredHeaders || [];
@@ -139,24 +128,108 @@
     const dateCols = new Set(schema.dateColumns || []);
     const headerLookup = new Map(requiredHeaders.map((h) => [normKey(h), h]));
 
+    function applyDashboardRows(rawRows) {
+      const finalRows = rawRows.map((raw) => {
+        const row = normalizeRow(raw, headerLookup, numericCols, dateCols);
+        requiredHeaders.forEach((header) => {
+          if (!(header in row)) row[header] = numericCols.has(header) ? null : "";
+        });
+        return row;
+      });
+      if (!finalRows.length) throw new Error("The snapshot contains no data rows.");
+
+      const dashState = dash.state;
+      dashState.rows = finalRows;
+      dashState.filtered = [...finalRows];
+      dashState.page = 1;
+      dash.refreshFilters();
+      dash.applyFilters();
+
+      const key = schema.uniqueKey || "CODE";
+      const codes = finalRows.map((row) => String(row[key] || "").trim());
+      const nonBlank = codes.filter(Boolean);
+      const duplicateCodes = nonBlank.length - new Set(nonBlank).size;
+      const blankCodes = codes.length - nonBlank.length;
+      const qualityBadge = $("quality-badge");
+      if (qualityBadge) {
+        const quality = duplicateCodes + blankCodes;
+        qualityBadge.textContent = quality === 0
+          ? "Data check: codes clean"
+          : `Data check: ${duplicateCodes} duplicate · ${blankCodes} blank codes`;
+        qualityBadge.style.background = quality ? "rgba(215,25,32,.18)" : "";
+      }
+      return finalRows;
+    }
+
+    // Cloud first: this is the unattended Drive snapshot shown by the portal
+    // timestamp and is available to every browser without an OAuth token.
+    try {
+      const { readZoneSnapshot } = await import(`./cloud-snapshot.js?v=zone-cloud-first-v1`);
+      const snapshot = await withTimeout(readZoneSnapshot(), 15000, "Loading the published Zone snapshot timed out");
+      if (snapshot?.rows?.length) {
+        const firstKeys = new Set(Object.keys(snapshot.rows[0] || {}).map(normKey));
+        if (!requiredHeaders.every((header) => firstKeys.has(normKey(header)))) {
+          throw new Error("The published Zone snapshot does not match the current 26-column schema.");
+        }
+        const finalRows = applyDashboardRows(snapshot.rows);
+        cloudApplied = true;
+        cloudStatusText = `${finalRows.length.toLocaleString()} rows · published Drive snapshot`;
+        cloudStatusTitle = [
+          `Source file: ${snapshot.fileName || "Zone Distribution snapshot"}`,
+          snapshot.sheetName ? `Worksheet: ${snapshot.sheetName}` : "",
+          snapshot.savedAt ? `Snapshot: ${snapshot.savedAt}` : "",
+        ].filter(Boolean).join("\n");
+        setStatus(cloudStatusText, cloudStatusTitle);
+      }
+    } catch (error) {
+      console.warn("Published Zone snapshot unavailable:", error?.message || error);
+    }
+
+    const drive = window.ShwapnoDrive;
+    if (!drive) return;
+    let info = drive.describe();
+    if (!info.folder) return; // cloud/static published data stands as-is
+
+    if (!info.authorized) {
+      // The folder stays saved, but the access token expires after ~1hr.
+      // Try one silent renewal before giving up — no forced consent screen.
+      setStatus("Reconnecting Google Drive…");
+      try {
+        await withTimeout(drive.requestToken({ forceConsent: false }), 8000, "Silent Drive reconnect timed out");
+        info = drive.describe();
+      } catch (error) {
+        if (!keepCloudStatus("sign-in is needed for an optional browser refresh")) {
+          setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
+        }
+        return;
+      }
+      if (!info.authorized) {
+        if (!keepCloudStatus("sign-in is needed for an optional browser refresh")) {
+          setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
+        }
+        return;
+      }
+    }
+
     setStatus("Reading Google Drive folder…");
     await withTimeout(loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"), 15000, "Loading the Excel reader library timed out");
     await waitFor(() => window.XLSX, 15000);
-    const { rowsFromWorkbook } = await import(`./folder-source.js?v=drive-live-rows-v1`);
+    const { rowsFromWorkbook } = await import(`./folder-source.js?v=drive-live-rows-v2`);
 
     const files = await withTimeout(drive.listFolderFiles(info.folder.id), 20000, "Listing the Drive folder timed out");
-    const candidates = files.filter((f) =>
-      /\.xlsx$|\.xlsm$/i.test(f.name || "") && Number(f.size || 0) <= MAX_CANDIDATE_BYTES
+    const candidates = files.filter((file) =>
+      /\.xlsx$|\.xlsm$/i.test(file.name || "") && Number(file.size || 0) <= MAX_CANDIDATE_BYTES
     );
     if (!candidates.length) {
-      setStatus("Published data (no Excel file under 15 MB found in the Drive folder)");
+      if (!keepCloudStatus("no Excel file under 15 MB was found")) {
+        setStatus("Published data (no Excel file under 15 MB found in the Drive folder)");
+      }
       return;
     }
-    // Files whose name hints at this dashboard are tried first (cheap win in
-    // the common case); everything else is still tried, in case the export
-    // was renamed or dated for the month, so content is what actually decides.
-    const named = candidates.filter((f) => NAME_HINT.test(f.name || ""));
-    const rest = candidates.filter((f) => !named.includes(f));
+    // Files whose name hints at this dashboard are tried first; content still
+    // decides, so a renamed workbook remains supported.
+    const named = candidates.filter((file) => NAME_HINT.test(file.name || ""));
+    const rest = candidates.filter((file) => !named.includes(file));
     const byNewest = (a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0);
     named.sort(byNewest);
     rest.sort(byNewest);
@@ -178,42 +251,24 @@
       if (result?.rows?.length) { matchedRows = result.rows; matchedFile = meta; break; }
     }
     if (!matchedRows) {
-      setStatus(
-        `Published data (${candidates.length} Excel file${candidates.length === 1 ? "" : "s"} checked in Drive, none matched this dashboard's columns)`,
-        lastError || undefined
-      );
+      if (!keepCloudStatus(`${candidates.length} Excel file${candidates.length === 1 ? " was" : "s were"} checked; none matched`)) {
+        setStatus(
+          `Published data (${candidates.length} Excel file${candidates.length === 1 ? "" : "s"} checked in Drive, none matched this dashboard's columns)`,
+          lastError || undefined
+        );
+      }
       return;
     }
 
-    const finalRows = matchedRows.map((raw) => normalizeRow(raw, headerLookup, numericCols, dateCols));
-
-    const dashState = dash.state;
-    dashState.rows = finalRows;
-    dashState.filtered = [...finalRows];
-    dashState.page = 1;
-    dash.refreshFilters();
-    dash.applyFilters();
-
-    const key = schema.uniqueKey || "CODE";
-    const codes = finalRows.map((r) => String(r[key] || "").trim());
-    const nonBlank = codes.filter(Boolean);
-    const duplicateCodes = nonBlank.length - new Set(nonBlank).size;
-    const blankCodes = codes.length - nonBlank.length;
-
+    const finalRows = applyDashboardRows(matchedRows);
     setStatus(
       `${finalRows.length.toLocaleString()} rows · live from Google Drive`,
       `Source file: ${matchedFile.name}\nFolder: ${info.folder.name}`
     );
-    const qualityBadge = $("quality-badge");
-    if (qualityBadge) {
-      const quality = duplicateCodes + blankCodes;
-      qualityBadge.textContent = quality === 0
-        ? "Data check: codes clean"
-        : `Data check: ${duplicateCodes} duplicate · ${blankCodes} blank codes`;
-      qualityBadge.style.background = quality ? "rgba(215,25,32,.18)" : "";
-    }
   } catch (error) {
-    setStatus("Published data (live Drive refresh hit an error)", error?.message || String(error));
+    if (!keepCloudStatus(error?.message || String(error))) {
+      setStatus("Published data (live Drive refresh hit an error)", error?.message || String(error));
+    }
     console.warn("Live Google Drive row refresh skipped:", error?.message || error);
   }
 })();
