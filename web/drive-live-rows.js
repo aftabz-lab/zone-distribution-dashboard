@@ -54,6 +54,13 @@
     });
   }
 
+  function withTimeout(promise, timeoutMs, message) {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(message || "Timed out")), timeoutMs)),
+    ]);
+  }
+
   function normKey(value) {
     return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
@@ -107,9 +114,12 @@
     if (!info.authorized) {
       // The folder stays saved, but the access token expires after ~1hr.
       // Try one silent renewal before giving up — no forced consent screen.
+      // This isn't triggered by a click, so if the browser blocks whatever
+      // popup GIS falls back to, requestToken() can hang rather than
+      // reject — a hard timeout keeps that from freezing this script forever.
       setStatus("Reconnecting Google Drive…");
       try {
-        await drive.requestToken({ forceConsent: false });
+        await withTimeout(drive.requestToken({ forceConsent: false }), 8000, "Silent Drive reconnect timed out");
         info = drive.describe();
       } catch (error) {
         setStatus("Published data (Drive sign-in needed — click Connect Google Drive)");
@@ -130,11 +140,11 @@
     const headerLookup = new Map(requiredHeaders.map((h) => [normKey(h), h]));
 
     setStatus("Reading Google Drive folder…");
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js");
+    await withTimeout(loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"), 15000, "Loading the Excel reader library timed out");
     await waitFor(() => window.XLSX, 15000);
     const { rowsFromWorkbook } = await import(`./folder-source.js?v=drive-live-rows-v1`);
 
-    const files = await drive.listFolderFiles(info.folder.id);
+    const files = await withTimeout(drive.listFolderFiles(info.folder.id), 20000, "Listing the Drive folder timed out");
     const candidates = files.filter((f) =>
       /\.xlsx$|\.xlsm$/i.test(f.name || "") && Number(f.size || 0) <= MAX_CANDIDATE_BYTES
     );
@@ -157,7 +167,7 @@
     let lastError = "";
     for (const meta of ordered) {
       let file;
-      try { file = await drive.downloadFile(meta); }
+      try { file = await withTimeout(drive.downloadFile(meta), 30000, "Download timed out"); }
       catch (error) { lastError = `Could not download "${meta.name}": ${error?.message || error}`; continue; }
       let workbook;
       try { workbook = window.XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false, cellStyles: false }); }
