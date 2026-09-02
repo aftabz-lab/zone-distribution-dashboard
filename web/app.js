@@ -393,6 +393,8 @@ function initPagination(){
 
 function initColumnChooser(){
   const options=$("column-options");
+  const panel=$("column-panel");
+  const hideButton=$("column-hide");
   options.innerHTML=COLUMNS.map(([key,label])=>
     `<label class="column-option"><input type="checkbox" data-column="${esc(key)}" checked><span>${esc(label)}</span></label>`
   ).join("");
@@ -402,7 +404,14 @@ function initColumnChooser(){
     if(!state.visibleColumns.size){ state.visibleColumns.add("CODE"); }
     renderTable();
   }));
-  $("column-toggle").addEventListener("click",()=>$("column-panel").classList.toggle("hidden"));
+  $("column-toggle").addEventListener("click",()=>{
+    panel.classList.toggle("hidden");
+    hideButton.classList.toggle("hidden",panel.classList.contains("hidden"));
+  });
+  hideButton.addEventListener("click",()=>{
+    panel.classList.add("hidden");
+    hideButton.classList.add("hidden");
+  });
   $("show-all-columns").addEventListener("click",()=>{
     state.visibleColumns=new Set(COLUMNS.map(c=>c[0]));
     options.querySelectorAll("input[data-column]").forEach(cb=>cb.checked=true);
