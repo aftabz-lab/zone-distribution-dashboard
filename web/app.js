@@ -489,3 +489,10 @@ window.__zoneDashboard = {
   refreshFilters: () => document.querySelectorAll("select[data-filter]").forEach(populateSelect),
   applyFilters,
 };
+
+// SHWAPNO Ask AI: read-only backend data bridge v1.
+if (new URLSearchParams(location.search).get('snapshot-worker') !== '1') window.ShwapnoDashboardData=Object.freeze({version:1,id:'zone',async read({global=false}={}){
+  if(!state.data)throw new Error('Zone Distribution backend data is still loading.');
+  const rows=global?state.rows:state.filtered;
+  return {id:'zone',ready:true,source:'Zone Distribution backend workbook',snapshot:state.data.meta?.savedAt||state.data.meta?.generatedAt,scope:global?'all published outlet rows':'all rows matching the dashboard filters; no pagination limit',filters:Object.entries(state.filters).map(([label,value])=>({label,value})),facts:[{label:'Outlet records',value:rows.length}],datasets:[{id:'outlets',title:'Outlet ownership, location and network metadata',rows,columns:COLUMNS.map(([key,label,type])=>({key,label,type})),identity:['CODE','Outlet Name','Regional Head HR Name','Zonal HR Name','Leader','Zonal','Division','District','Area'],latest:{field:'Launching Date',label:'outlet opening'}}]};
+}});
