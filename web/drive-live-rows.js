@@ -23,6 +23,8 @@
   const $ = (id) => document.getElementById(id);
   const MAX_CANDIDATE_BYTES = 15 * 1024 * 1024; // guards against scanning huge unrelated exports (Z-Report, audit responses, etc.) that live in the same shared folder
   const NAME_HINT = /zone|distribution|outlet/i;
+  const SAVED_SNAPSHOT_KEY = "shwapno-zone-last-good-snapshot-v1";
+  const LEGACY_HEADERS = {code:"CODE",name:"Outlet Name",zonal:"Zonal",format:"Format",leader:"Leader",status:"Status",district:"District",division:"Division",area:"Area",location:"Location Type"};
   let cloudApplied = false;
   let cloudStatusText = "";
   let cloudStatusTitle = "";
@@ -100,7 +102,7 @@
   function normalizeRow(raw, headerLookup, numericCols, dateCols) {
     const row = {};
     for (const [key, value] of Object.entries(raw)) {
-      const canon = headerLookup.get(normKey(key));
+      const canon = headerLookup.get(normKey(key)) || LEGACY_HEADERS[normKey(key)];
       if (!canon) continue;
       if (dateCols.has(canon)) {
         row[canon] = excelSerialToIso(value);
@@ -126,9 +128,15 @@
     const dateCols = new Set(schema.dateColumns || []);
     const headerLookup = new Map(requiredHeaders.map((h) => [normKey(h), h]));
 
-    function applyDashboardRows(rawRows) {
-      const finalRows = rawRows.map((raw) => {
-        const row = normalizeRow(raw, headerLookup, numericCols, dateCols);
+    function applyDashboardRows(rawRows, snapshot = null) {
+      const previousByCode = new Map(dash.state.rows.map(row => [String(row.CODE || "").trim(), row]));
+      const finalRows = rawRows.map((raw, index) => {
+        const normalized = normalizeRow(raw, headerLookup, numericCols, dateCols);
+        const previous = previousByCode.get(String(normalized.CODE || "").trim());
+        if (snapshot?.legacyCompact && !previous) throw new Error("The compact snapshot contains a new outlet; waiting for its complete workbook snapshot.");
+        // Compact snapshots omit SFT, dates, contacts and other workbook fields.
+        // Retain those actual fields by outlet code instead of blanking them.
+        const row = snapshot?.legacyCompact ? { ...previous, ...normalized, SL: index + 1 } : normalized;
         requiredHeaders.forEach((header) => {
           if (!(header in row)) row[header] = numericCols.has(header) ? null : "";
         });
@@ -138,6 +146,15 @@
 
       const dashState = dash.state;
       dashState.rows = finalRows;
+      dashState.data.rows = finalRows;
+      if (snapshot) dashState.data.meta = {
+        ...dashState.data.meta,
+        rowCount: finalRows.length,
+        sourceWorkbook: snapshot.fileName || dashState.data.meta?.sourceWorkbook,
+        sourceWorksheet: snapshot.sheetName || dashState.data.meta?.sourceWorksheet,
+        savedAt: snapshot.savedAt || snapshot.cloudUpdatedAt,
+        generatedAt: snapshot.savedAt || snapshot.cloudUpdatedAt || dashState.data.meta?.generatedAt,
+      };
       dashState.filtered = [...finalRows];
       dashState.page = 1;
       dash.refreshFilters();
@@ -159,29 +176,74 @@
       return finalRows;
     }
 
-    // Cloud first: this is the unattended Drive snapshot shown by the portal
-    // timestamp and is available to every browser without an OAuth token.
+    function validateSnapshot(snapshot) {
+      if (!snapshot?.rows?.length) return false;
+      if (snapshot.legacyCompact) return true;
+      return snapshot.rows.every(row => {
+        const keys = new Set(Object.keys(row || {}).map(normKey));
+        return requiredHeaders.every(header => keys.has(normKey(header)));
+      });
+    }
+
+    let appliedIdentity = "";
+    let appliedTime = Date.parse(dash.state.data.meta?.savedAt || dash.state.data.meta?.generatedAt || "") || 0;
+    function applySnapshot(snapshot, cached = false) {
+      if (!validateSnapshot(snapshot)) throw new Error("The published Zone snapshot does not match the current 26-column schema.");
+      const snapshotTime = Date.parse(snapshot.cloudUpdatedAt || snapshot.savedAt || "") || 0;
+      if (snapshotTime && snapshotTime < appliedTime) return;
+      const identity = [snapshot.fileSignature, snapshot.cloudUpdatedAt || snapshot.savedAt, snapshot.fileName, snapshot.rows.length].join("|");
+      if (identity === appliedIdentity) return;
+      const finalRows = applyDashboardRows(snapshot.rows, snapshot);
+      appliedIdentity = identity;
+      appliedTime = Math.max(appliedTime, snapshotTime);
+      cloudApplied = true;
+      cloudStatusText = `${finalRows.length.toLocaleString()} rows · ${cached ? "saved Drive snapshot" : "published Drive snapshot"}`;
+      cloudStatusTitle = [
+        `Source file: ${snapshot.fileName || "Zone Distribution snapshot"}`,
+        snapshot.sheetName ? `Worksheet: ${snapshot.sheetName}` : "",
+        snapshot.savedAt ? `Snapshot: ${snapshot.savedAt}` : "",
+      ].filter(Boolean).join("\n");
+      setStatus(cloudStatusText, cloudStatusTitle);
+      try { localStorage.setItem(SAVED_SNAPSHOT_KEY, JSON.stringify({ ...snapshot, rows: finalRows, legacyCompact: false })); } catch {}
+    }
+
+    // Restore complete validated data immediately; OAuth expiry cannot remove it.
     try {
-      const { readZoneSnapshot } = await import(`./cloud-snapshot.js?v=zone-cloud-first-v1`);
+      const saved = JSON.parse(localStorage.getItem(SAVED_SNAPSHOT_KEY) || "null");
+      if (validateSnapshot(saved)) applySnapshot(saved, true);
+    } catch {}
+
+    let refreshPromise = null;
+    let retryTimer = null;
+    async function refreshCloud() {
+      if (refreshPromise) return refreshPromise;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      refreshPromise = (async () => { try {
+      const { readZoneSnapshot } = await import(`./cloud-snapshot.js?v=zone-auto-data-v36-20261012`);
       const snapshot = await withTimeout(readZoneSnapshot(), 15000, "Loading the published Zone snapshot timed out");
       if (snapshot?.rows?.length) {
-        const firstKeys = new Set(Object.keys(snapshot.rows[0] || {}).map(normKey));
-        if (!requiredHeaders.every((header) => firstKeys.has(normKey(header)))) {
-          throw new Error("The published Zone snapshot does not match the current 26-column schema.");
-        }
-        const finalRows = applyDashboardRows(snapshot.rows);
-        cloudApplied = true;
-        cloudStatusText = `${finalRows.length.toLocaleString()} rows · published Drive snapshot`;
-        cloudStatusTitle = [
-          `Source file: ${snapshot.fileName || "Zone Distribution snapshot"}`,
-          snapshot.sheetName ? `Worksheet: ${snapshot.sheetName}` : "",
-          snapshot.savedAt ? `Snapshot: ${snapshot.savedAt}` : "",
-        ].filter(Boolean).join("\n");
-        setStatus(cloudStatusText, cloudStatusTitle);
-      }
+        applySnapshot(snapshot);
+      } else throw new Error("No complete Zone snapshot has been published yet.");
     } catch (error) {
       console.warn("Published Zone snapshot unavailable:", error?.message || error);
+      retryTimer = setTimeout(refreshCloud, 60000);
+    } })();
+      try { await refreshPromise; } finally { refreshPromise = null; }
     }
+
+    // Reuse the existing portal snapshot clock; the worker's snapshot rules stay
+    // unchanged and full data is downloaded only when that clock changes.
+    const snapshotClock = document.querySelector('[data-snapshot-key="zone-distribution"]');
+    if (snapshotClock) {
+      let clockText = snapshotClock.textContent;
+      new MutationObserver(() => {
+        const value = snapshotClock.textContent;
+        if (value !== clockText) { clockText = value; refreshCloud(); }
+      }).observe(snapshotClock, { childList: true, characterData: true, subtree: true });
+    }
+    window.addEventListener("online", refreshCloud);
+    window.addEventListener("focus", refreshCloud);
+    await refreshCloud();
 
     const drive = window.ShwapnoDrive;
     if (!drive) return;
@@ -247,7 +309,9 @@
       return;
     }
 
-    const finalRows = applyDashboardRows(matchedRows);
+    const liveSnapshot = { fileName: matchedFile.name, savedAt: new Date().toISOString(), rows: matchedRows };
+    const finalRows = applyDashboardRows(matchedRows, liveSnapshot);
+    try { localStorage.setItem(SAVED_SNAPSHOT_KEY, JSON.stringify({ ...liveSnapshot, rows: finalRows, legacyCompact: false })); } catch {}
     setStatus(
       `${finalRows.length.toLocaleString()} rows · live from Google Drive`,
       `Source file: ${matchedFile.name}\nFolder: ${info.folder.name}`
@@ -259,3 +323,4 @@
     console.warn("Live Google Drive row refresh skipped:", error?.message || error);
   }
 })();
+

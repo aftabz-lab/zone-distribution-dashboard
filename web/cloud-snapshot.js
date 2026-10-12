@@ -34,9 +34,14 @@ export async function readZoneSnapshot() {
   const row = await api.readCloudSnapshot(ZONE_ROOT_KEY);
   const payload = row?.payload;
   const snapshot = payload?.snapshot;
-  if (payload?.format !== "zone-snapshot-v1" || !Array.isArray(snapshot?.rows) || !snapshot.rows.length) return null;
+  if ((payload?.format && payload.format !== "zone-snapshot-v1") || !Array.isArray(snapshot?.rows) || !snapshot.rows.length) return null;
+  // The original publisher stored {snapshot} without an envelope format. Its
+  // compact rows remain readable when joined to the complete saved workbook.
+  const legacyCompact = !payload?.format && snapshot.rows.every(row => row && typeof row === "object" && "code" in row && "name" in row);
+  if (!payload?.format && !legacyCompact && !snapshot.rows.every(row => row && typeof row === "object" && "CODE" in row && "Outlet Name" in row)) return null;
   return {
     ...snapshot,
+    legacyCompact,
     sourceKind: "shared-cloud",
     savedAt: snapshot.savedAt || payload.generatedAt || row.updated_at,
     cloudUpdatedAt: row.updated_at || payload.generatedAt || snapshot.savedAt || null,
@@ -190,3 +195,4 @@ export async function publishZReportSnapshot(snapshot) {
   chunkCache.clear();
   return { published: true, savedAt: snapshot.savedAt, parts: parts.length };
 }
+
