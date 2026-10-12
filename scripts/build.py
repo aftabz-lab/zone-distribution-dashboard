@@ -261,6 +261,25 @@ def build_rows(schema: dict) -> tuple[list[dict], dict]:
     }
     return records, metadata
 
+def saved_zone_dataset(schema: dict) -> dict | None:
+    required = schema.get("requiredHeaders", [])
+    candidates = []
+    for path in (DATA_DIR / "zone_snapshot.json", SITE_DIR / "data" / "dashboard_data.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            rows = payload.get("rows")
+            if not isinstance(rows, list) or not rows or not all(isinstance(row, dict) and all(header in row for header in required) for row in rows):
+                continue
+            value = str(payload.get("meta", {}).get("savedAt") or payload.get("meta", {}).get("generatedAt") or "")
+            try:
+                stamp = datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                stamp = 0
+            candidates.append((stamp, payload))
+        except (OSError, ValueError, TypeError):
+            continue
+    return max(candidates, key=lambda item: item[0])[1] if candidates else None
+
 def main() -> int:
     try:
         schema = json.loads((CONFIG_DIR / "schema.json").read_text(encoding="utf-8"))
@@ -269,18 +288,12 @@ def main() -> int:
         try:
             rows, metadata = build_rows(schema)
         except Exception as exc:
-            # No workbook in /data (or none matched the schema) is now the
-            # expected, normal case: this dashboard reads its rows live from
-            # the connected Google Drive folder in the browser instead
-            # (web/drive-live-rows.js). Publish an empty-but-valid dataset
-            # rather than failing the whole deploy — site/ still rebuilds
-            # fresh from the current web/ on every run either way, so nothing
-            # goes stale. A workbook can still be dropped in /data later as an
-            # optional fallback for visitors without Drive access; it isn't
-            # required.
-            print(f"No workbook in /data ({exc}) — publishing with 0 rows; live data comes from Google Drive.")
-            rows = []
-            metadata = {
+            # A repository workbook is optional for shared Drive snapshots.
+            # Read the last complete published dataset before rebuilding site/;
+            # a code deployment must not replace that usable data with zero rows.
+            saved = saved_zone_dataset(schema)
+            rows = saved["rows"] if saved else []
+            metadata = dict(saved.get("meta", {})) if saved else {
                 "sourceWorkbook": "(none \u2014 Google Drive live)",
                 "sourceWorksheet": "",
                 "headerRow": 0,
@@ -290,6 +303,11 @@ def main() -> int:
                 "blankCodes": 0,
                 "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
+            if saved:
+                metadata["rowCount"] = len(rows)
+                print(f"No current workbook in /data ({exc}) — retaining {len(rows):,} last valid published rows.")
+            else:
+                print(f"No workbook or saved snapshot in /data ({exc}) — waiting for the shared Drive snapshot.")
 
         if SITE_DIR.exists():
             shutil.rmtree(SITE_DIR)
@@ -328,3 +346,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
