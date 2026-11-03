@@ -63,8 +63,12 @@ function formatDate(value){
 
 // The dashboard cannot inspect Google Search pages after opening a short
 // link. Store only destinations verified from the visible Google actions.
-const googlePlacesCorrections = new Map([
-  ["KcFAywZ6sj8PgUPXs", "Shwapno Elephant Road Branch Dhaka"],
+const googleDirectionsTargets = new Map([
+  ["KcFAywZ6sj8PgUPXs", "https://www.google.com/maps/dir/23.7711046,90.4083861/Shwapno+Elephent+Rd+Branch,+307+S+J+Jahanara+Imam+Sharani,+Dhaka+1205/@23.7524697,90.3802133,6097m/data=!3m2!1e3!4b1!4m9!4m8!1m1!4e1!1m5!1m1!1s0x3755b9002c6ed5c1:0xaaf3f1d94a5040fd!2m2!1d90.387265!2d23.7374502?entry=ttu&g_ep=EgoyMDI2MTAyOC4wIKXMDSoASAFQAw%3D%3D"],
+  ["k3nLsHxVeT3e0s8QO", "https://www.google.com/maps/dir//Kurgaon,+nabinagar,+1344+Kurgao+Rd,+Savar+1344/data=!4m8!4m7!1m0!1m5!1m1!1s0x3755e90075cd6aa9:0x5799c9c44c052f1c!2m2!1d90.2543299!2d23.9081243"],
+  ["y9pBoeazZTZ7FBe8A", "https://www.google.com/maps/dir//Zirabo+Bus+Stand,+N302,+Zirabo,+Bangladesh/data=!4m8!4m7!1m0!1m5!1m1!1s0x3755c2f3483e0fb5:0xcacb3844371b020c!2m2!1d90.3188905!2d23.9130967"],
+  ["OpliJn1SRgmiepSZj", "https://www.google.com/maps/dir//Shwapno,+2QQ9%2B9F8,+Raipur+Main+Rd,+Raipur,+Bangladesh/data=!4m8!4m7!1m0!1m5!1m1!1s0x3754e900486d18af:0xe13c7ae80e24910!2m2!1d90.7687432!2d23.0385096"],
+  ["t1oLFsjDAmEPDJ0iP", "https://www.google.com/maps/dir//Sonapur+Zero+Point+Bus+Stop,+Chowmohani+-+Maijdee+Rd,+Noakhali,+Bangladesh/data=!4m8!4m7!1m0!1m5!1m1!1s0x3754a59eb3ef7191:0x3d4607cf835b0874!2m2!1d91.1013525!2d22.8258661"],
 ]);
 const googleReviewTargets = new Map([
   ["UbAQF2T", "0x3755bf4a7067c5bb:0xf8319bbdd8b8a6ad"],
@@ -101,11 +105,8 @@ function googleMapsUrl(value){
   // protocol. Canonicalize the known Google short-link structures first.
   const compact=text.replace(/\s+/g,"").replace(/\\/g,"/");
   const sharedPlace=/^(?:https?)?:?[-/]*share\.google[-/]+([A-Z0-9_-]+)\/?(?:[?#].*)?$/i.exec(compact);
-  const corrected=sharedPlace&&googlePlacesCorrections.get(sharedPlace[1]);
-  if(corrected){
-    const params=new URLSearchParams({udm:"local",q:corrected,spell:"1"});
-    return `https://www.google.com/search?${params}`;
-  }
+  const directions=sharedPlace&&googleDirectionsTargets.get(sharedPlace[1]);
+  if(directions) return directions;
   const mapsShort=/^(?:https?)?:?[-/]*maps\.app\.goo\.gl[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
   if(mapsShort) return `https://maps.app.goo.gl/${mapsShort[1]}`;
   const googleShort=/^(?:https?)?:?[-/]*g\.co[-/]+kgs[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
