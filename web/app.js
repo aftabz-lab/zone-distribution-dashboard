@@ -60,6 +60,28 @@ function formatDate(value){
   const dt=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
   return dt.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
 }
+
+// The dashboard cannot inspect Google Search pages after opening a short
+// link. Store only destinations verified from the visible Google actions.
+const googlePlacesCorrections = new Map([
+  ["KcFAywZ6sj8PgUPXs", "Shwapno Elephant Road Branch Dhaka"],
+]);
+const googleReviewTargets = new Map([
+  ["UbAQF2T", "0x3755bf4a7067c5bb:0xf8319bbdd8b8a6ad"],
+  ["7BXdo4G", "0x3756711683970979:0x839c019097640b9d"],
+  ["fv27Hdf", "0x375661bd8f58e829:0x430dafafb1720d53"],
+  ["5QdMYXn", "0x3755c7001437af23:0x624c7ed1dda56062"],
+  ["n7z4Xu7", "0x37513fba636e5cef:0x33ecab85e98e7168"],
+  ["q9ca3Yy", "0x3751bf0042c29e0f:0x74d3917426191432"],
+  ["Er18k7o", "0x3750552c73c4bdcd:0x5f1a8fef0db2b630"],
+  ["GojckNu", "0x37541ba81836f28f:0xe51e81c785f40170"],
+  ["FJ5RgRt", "0x30ada1ec8fe5a7b1:0x3bcdc40c178265c2"],
+  ["6WtZXBv", "0x3754f90047dda163:0x34517a31ad9b7a2f"],
+  ["4ubYpyf", "0x3755b7fe5ea906f1:0x291b92ee9888a816"],
+  ["pzWFG3R", "0x3755b85489e3a4c9:0xb6a8cf9597040fd7"],
+  ["Vu466F", "0x39ff11415c281291:0xbafc46867349a38b"],
+]);
+
 function googleMapsUrl(value){
   const text=String(value??"").trim();
   if(!text||/^(?:-|—|n\/?a|none|null|not\s+available|not\s+found)$/i.test(text)) return "";
@@ -78,10 +100,22 @@ function googleMapsUrl(value){
   // Excel may replace URL slashes with hyphens/backslashes or omit the
   // protocol. Canonicalize the known Google short-link structures first.
   const compact=text.replace(/\s+/g,"").replace(/\\/g,"/");
+  const sharedPlace=/^(?:https?)?:?[-/]*share\.google[-/]+([A-Z0-9_-]+)\/?(?:[?#].*)?$/i.exec(compact);
+  const corrected=sharedPlace&&googlePlacesCorrections.get(sharedPlace[1]);
+  if(corrected){
+    const params=new URLSearchParams({udm:"local",q:corrected,spell:"1"});
+    return `https://www.google.com/search?${params}`;
+  }
   const mapsShort=/^(?:https?)?:?[-/]*maps\.app\.goo\.gl[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
   if(mapsShort) return `https://maps.app.goo.gl/${mapsShort[1]}`;
   const googleShort=/^(?:https?)?:?[-/]*g\.co[-/]+kgs[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
-  if(googleShort) return `https://g.co/kgs/${googleShort[1]}`;
+  if(googleShort){
+    const review=googleReviewTargets.get(googleShort[1].split("?")[0]);
+    const original=`https://g.co/kgs/${googleShort[1]}`;
+    // The browser carries this fragment through Google's redirect, preserving
+    // the original business context and opening its reviews on arrival.
+    return review?`${original}#lrd=${review},1,,,,`:original;
+  }
   const oldGoogleShort=/^(?:https?)?:?[-/]*goo\.gl[-/]+maps[-/]+([A-Z0-9_-]+(?:\?[A-Z0-9_=&%.-]+)?)$/i.exec(compact);
   if(oldGoogleShort) return `https://goo.gl/maps/${oldGoogleShort[1]}`;
   if(/^https?:\/\//i.test(text)) return text;
